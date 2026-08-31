@@ -59,4 +59,9 @@ class User extends Authenticatable
     {
         return $this->hasMany(Client::class, 'delegate_id');
     }
+
+    public function objectives()
+    {
+        return $this->hasMany(DelegateObjective::class, 'user_id');
+    }
 }

@@ -66,4 +66,9 @@ class Client extends Model
     {
         return $this->belongsTo(User::class, 'delegate_id');
     }
+
+    public function objectives()
+    {
+        return $this->hasMany(ClientObjective::class, 'client_id');
+    }
 }

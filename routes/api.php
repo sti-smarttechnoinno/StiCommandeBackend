@@ -12,10 +12,18 @@ use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\ReportController;
+use App\Http\Controllers\Api\DelegateObjectiveController;
+use App\Http\Controllers\Api\ClientObjectiveController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/auth/login', [AuthController::class, 'login']);
 Route::post('/login', [AuthController::class, 'login']);
+
+// Delegate & Client Objectives (Public / Auth)
+Route::get('/delegates/{delegate}/objectives', [DelegateObjectiveController::class, 'index']);
+Route::post('/delegates/{delegate}/objectives', [DelegateObjectiveController::class, 'storeOrUpdate']);
+Route::get('/clients/{client}/objectives', [ClientObjectiveController::class, 'index']);
+Route::post('/clients/{client}/objectives', [ClientObjectiveController::class, 'storeOrUpdate']);
 
 // Reports routes (Public / Auth)
 Route::get('/reports/kpis', [ReportController::class, 'kpis']);
