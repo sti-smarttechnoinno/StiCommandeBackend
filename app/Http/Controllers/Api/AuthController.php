@@ -67,7 +67,22 @@ class AuthController extends Controller
             ]);
         }
 
-        $user->update(['last_login_at' => now(), 'status' => 'online']);
+        $user->update(['last_login_at' => now(), 'last_seen_at' => now(), 'status' => 'online']);
+
+        if ($user->role === 'delegate') {
+            try {
+                \Illuminate\Support\Facades\Http::timeout(2)->post('http://127.0.0.1:8085/broadcast', [
+                    'type' => 'DELEGATE_STATUS_CHANGED',
+                    'delegate' => [
+                        'id' => (string) $user->id,
+                        'name' => $user->name,
+                        'status' => 'online',
+                        'isOnline' => true,
+                        'lastActivity' => now()->toISOString(),
+                    ],
+                ]);
+            } catch (\Throwable $e) {}
+        }
 
         $token = $user->createToken('auth-token')->plainTextToken;
         $usernameHandle = $user->username ?? explode('@', $user->email ?? '')[0] ?? $user->name;
@@ -82,7 +97,7 @@ class AuthController extends Controller
                 'role' => $user->role,
                 'region' => $user->region ?? 'Algiers',
                 'wilaya' => $user->wilaya ?? '16 - Alger',
-                'status' => $user->status ?? 'online',
+                'status' => 'online',
                 'is_active' => (bool) ($user->is_active ?? true),
                 'avatar' => strtoupper(substr($user->name, 0, 1)),
             ],
@@ -93,7 +108,25 @@ class AuthController extends Controller
 
     public function logout(Request $request): JsonResponse
     {
-        $request->user()->currentAccessToken()->delete();
+        $user = $request->user();
+        if ($user) {
+            $user->update(['last_seen_at' => now(), 'status' => 'offline']);
+            if ($user->role === 'delegate') {
+                try {
+                    \Illuminate\Support\Facades\Http::timeout(2)->post('http://127.0.0.1:8085/broadcast', [
+                        'type' => 'DELEGATE_STATUS_CHANGED',
+                        'delegate' => [
+                            'id' => (string) $user->id,
+                            'name' => $user->name,
+                            'status' => 'offline',
+                            'isOnline' => false,
+                            'lastActivity' => now()->toISOString(),
+                        ],
+                    ]);
+                } catch (\Throwable $e) {}
+            }
+            $user->currentAccessToken()?->delete();
+        }
 
         return response()->json(['message' => 'Logged out successfully']);
     }

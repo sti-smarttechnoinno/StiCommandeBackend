@@ -315,8 +315,9 @@ class DelegateController extends Controller
         $validated['role'] = 'delegate';
         $validated['password'] = bcrypt('password');
         $validated['is_active'] = true;
-        $validated['status'] = $validated['status'] ?? 'online';
-        $validated['last_seen_at'] = now();
+        $validated['status'] = 'offline';
+        $validated['last_seen_at'] = null;
+        $validated['last_login_at'] = null;
 
         $delegate = User::create($validated);
 
@@ -423,10 +424,24 @@ class DelegateController extends Controller
             ? (int) round(($activeClientsCount / $clientsCount) * 100)
             : ($totalOrders > 0 ? 100 : 0);
 
-        // Dynamic online calculation (seen in the last 45 seconds AND status not marked offline)
-        $isOnline = $delegate->status !== 'offline' && $delegate->status !== 'suspended' && $delegate->last_seen_at && $delegate->last_seen_at->gt(now()->subSeconds(45));
-        $computedStatus = $isOnline ? 'online' : ($delegate->status === 'suspended' ? 'suspended' : 'offline');
-        $lastActivity = $delegate->last_seen_at?->toISOString() ?? $delegate->updated_at?->toISOString() ?? now()->toISOString();
+        // Dynamic online calculation (seen in the last 60 seconds)
+        $lastSeen = $delegate->last_seen_at ?? $delegate->last_login_at;
+        $hasEverConnected = $lastSeen !== null;
+        $isOnline = $delegate->status !== 'offline' && $delegate->status !== 'suspended' && $hasEverConnected && $lastSeen->gt(now()->subSeconds(60));
+
+        if ($delegate->status === 'suspended') {
+            $computedStatus = 'suspended';
+        } elseif ($delegate->status === 'busy') {
+            $computedStatus = 'busy';
+        } elseif ($isOnline) {
+            $computedStatus = 'online';
+        } elseif (!$hasEverConnected) {
+            $computedStatus = 'never_connected';
+        } else {
+            $computedStatus = 'offline';
+        }
+
+        $lastActivity = $hasEverConnected ? $lastSeen->toISOString() : null;
 
         return [
             'id' => (string) $delegate->id,
@@ -438,6 +453,7 @@ class DelegateController extends Controller
             'wilaya' => $delegate->wilaya ?? '',
             'status' => $computedStatus,
             'isOnline' => $isOnline,
+            'hasEverConnected' => $hasEverConnected,
             'totalOrders' => $totalOrders,
             'totalRevenue' => $totalRevenue,
             'completionRate' => $completionRate,
