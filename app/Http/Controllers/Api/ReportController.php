@@ -69,34 +69,87 @@ class ReportController extends Controller
     public function kpis()
     {
         $totalOrders = Order::count();
-        $totalRevenue = (float) Order::where('status', '!=', 'cancelled')->sum('total_amount');
+        $totalRevenue = (float) Order::whereNotIn('status', ['cancelled', 'rejected'])->sum('total_amount');
         $avgOrderValue = $totalOrders > 0 ? $totalRevenue / $totalOrders : 0;
         
+        $pendingOrders = Order::where('status', 'pending')->count();
         $activeClients = Client::where('status', 'active')->count();
-        $activeDelegates = User::where('role', 'DELEGATE')->where('is_active', true)->count();
+
+        $activeDelegates = User::where(function ($q) {
+            $q->whereIn('role', ['DELEGATE', 'delegate', 'commercial'])
+              ->orWhere('role', 'like', '%delegate%');
+        })->where('is_active', true)->count();
+
         if ($activeDelegates === 0) {
-            $activeDelegates = User::where('role', 'DELEGATE')->count();
+            $activeDelegates = User::where(function ($q) {
+                $q->whereIn('role', ['DELEGATE', 'delegate', 'commercial'])
+                  ->orWhere('role', 'like', '%delegate%');
+            })->count();
         }
 
-        // Calculate previous month comparison for growth %
-        $lastMonthRevenue = (float) Order::where('created_at', '>=', now()->subDays(60))
-                                         ->where('created_at', '<', now()->subDays(30))
-                                         ->where('status', '!=', 'cancelled')
-                                         ->sum('total_amount');
+        // Calculate comparison for growth % (current 30 days vs previous 30 days)
+        $currentPeriodRevenue = (float) Order::where('created_at', '>=', now()->subDays(30))
+                                             ->whereNotIn('status', ['cancelled', 'rejected'])
+                                             ->sum('total_amount');
+        $prevPeriodRevenue = (float) Order::whereBetween('created_at', [now()->subDays(60), now()->subDays(30)])
+                                          ->whereNotIn('status', ['cancelled', 'rejected'])
+                                          ->sum('total_amount');
 
-        $revenueGrowth = $lastMonthRevenue > 0 
-            ? round((($totalRevenue - $lastMonthRevenue) / $lastMonthRevenue) * 100, 1) 
-            : 12.5;
+        $revenueGrowth = $prevPeriodRevenue > 0 
+            ? round((($currentPeriodRevenue - $prevPeriodRevenue) / $prevPeriodRevenue) * 100, 1) 
+            : 0.0;
+
+        $currentPeriodOrders = Order::where('created_at', '>=', now()->subDays(30))->count();
+        $prevPeriodOrders = Order::whereBetween('created_at', [now()->subDays(60), now()->subDays(30)])->count();
+
+        $ordersGrowth = $prevPeriodOrders > 0
+            ? round((($currentPeriodOrders - $prevPeriodOrders) / $prevPeriodOrders) * 100, 1)
+            : 0.0;
+
+        $currentPeriodPending = Order::where('created_at', '>=', now()->subDays(30))->where('status', 'pending')->count();
+        $prevPeriodPending = Order::whereBetween('created_at', [now()->subDays(60), now()->subDays(30)])->where('status', 'pending')->count();
+
+        $pendingGrowth = $prevPeriodPending > 0
+            ? round((($currentPeriodPending - $prevPeriodPending) / $prevPeriodPending) * 100, 1)
+            : 0.0;
+
+        // Daily 7-day sparklines
+        $ordersSparkline = [];
+        $revenueSparkline = [];
+        $pendingSparkline = [];
+        $delegatesSparkline = [];
+
+        for ($i = 6; $i >= 0; $i--) {
+            $date = now()->subDays($i);
+            $dayOrders = Order::whereDate('created_at', $date->toDateString())->count();
+            $dayRevenue = (float) Order::whereDate('created_at', $date->toDateString())
+                ->whereNotIn('status', ['cancelled', 'rejected'])
+                ->sum('total_amount');
+            $dayPending = Order::whereDate('created_at', $date->toDateString())
+                ->where('status', 'pending')
+                ->count();
+
+            $ordersSparkline[] = $dayOrders;
+            $revenueSparkline[] = round($dayRevenue, 2);
+            $pendingSparkline[] = $dayPending;
+            $delegatesSparkline[] = $activeDelegates;
+        }
 
         return response()->json([
             'totalRevenue' => round($totalRevenue, 2),
             'revenueGrowth' => $revenueGrowth,
             'totalOrders' => $totalOrders,
-            'ordersGrowth' => 8.4,
+            'ordersGrowth' => $ordersGrowth,
+            'pendingOrders' => $pendingOrders,
+            'pendingGrowth' => $pendingGrowth,
             'avgOrderValue' => round($avgOrderValue, 2),
-            'avgOrderGrowth' => 4.2,
+            'avgOrderGrowth' => 0.0,
             'activeClients' => $activeClients,
             'activeDelegates' => $activeDelegates,
+            'ordersSparkline' => $ordersSparkline,
+            'revenueSparkline' => $revenueSparkline,
+            'pendingSparkline' => $pendingSparkline,
+            'delegatesSparkline' => $delegatesSparkline,
         ]);
     }
 

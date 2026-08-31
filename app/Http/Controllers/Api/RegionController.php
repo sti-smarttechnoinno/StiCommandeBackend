@@ -230,7 +230,7 @@ class RegionController extends Controller
                     'id' => (string) $del->id,
                     'name' => $del->name,
                     'phone' => $del->phone ?? '',
-                    'email' => $del->email,
+                    'username' => $del->username ?? $del->name,
                     'avatar' => strtoupper(substr($del->name, 0, 2)),
                     'isOnline' => $del->status === 'online',
                     'role' => 'Commercial Delegate',

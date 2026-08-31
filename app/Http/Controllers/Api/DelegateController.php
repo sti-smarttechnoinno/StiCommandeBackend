@@ -18,7 +18,7 @@ class DelegateController extends Controller
             $q = strtolower($search);
             $query->where(function ($query) use ($q) {
                 $query->whereRaw('LOWER(name) LIKE ?', ["%{$q}%"])
-                    ->orWhereRaw('LOWER(email) LIKE ?', ["%{$q}%"])
+                    ->orWhereRaw('LOWER(username) LIKE ?', ["%{$q}%"])
                     ->orWhere('phone', 'LIKE', "%{$q}%")
                     ->orWhereRaw('LOWER(region) LIKE ?', ["%{$q}%"])
                     ->orWhereRaw('LOWER(wilaya) LIKE ?', ["%{$q}%"]);
@@ -43,7 +43,7 @@ class DelegateController extends Controller
 
         $sortField = $request->input('sortField', 'created_at');
         $sortDirection = $request->input('sortDirection', 'desc');
-        $allowedSorts = ['name', 'region', 'status', 'created_at', 'last_seen_at'];
+        $allowedSorts = ['name', 'username', 'region', 'status', 'created_at', 'last_seen_at'];
         if (! in_array($sortField, $allowedSorts)) {
             $sortField = 'created_at';
         }
@@ -77,8 +77,9 @@ class DelegateController extends Controller
 
         if ($identifier = $request->input('identifier')) {
             $d = User::where('id', $identifier)
+                ->orWhere('username', $identifier)
+                ->orWhere('phone', $identifier)
                 ->orWhere('employee_id', $identifier)
-                ->orWhere('email', $identifier)
                 ->orWhere('name', $identifier)
                 ->first();
             if ($d) {
@@ -108,8 +109,9 @@ class DelegateController extends Controller
 
         if ($identifier = $request->input('identifier')) {
             $d = User::where('id', $identifier)
+                ->orWhere('username', $identifier)
+                ->orWhere('phone', $identifier)
                 ->orWhere('employee_id', $identifier)
-                ->orWhere('email', $identifier)
                 ->orWhere('name', $identifier)
                 ->first();
             if ($d) {
@@ -282,19 +284,27 @@ class DelegateController extends Controller
     {
         $input = $request->all();
 
-        if (! empty($input['username'])) {
-            $username = trim($input['username']);
-            $input['email'] = str_contains($username, '@') ? $username : strtolower($username) . '@eststar.dz';
-        }
-
         $delegateCode = $input['delegateCode'] ?? $input['delegate_code'] ?? $input['employee_id'] ?? $this->generateDelegateCode();
         $input['employee_id'] = $delegateCode;
+
+        if (empty($input['username'])) {
+            $nameStr = $input['name'] ?? 'delegate';
+            $baseUsername = strtolower(preg_replace('/[^a-zA-Z0-9_]/', '', str_replace(' ', '.', $nameStr)));
+            $username = $baseUsername;
+            $counter = 1;
+            while (User::where('username', $username)->exists()) {
+                $username = $baseUsername . $counter++;
+            }
+            $input['username'] = $username;
+        } else {
+            $input['username'] = trim($input['username']);
+        }
 
         $request->merge($input);
 
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'email' => 'required|string|max:255|unique:users,email',
+            'username' => 'required|string|max:255|unique:users,username',
             'employee_id' => 'required|string|max:50|unique:users,employee_id',
             'phone' => 'nullable|string|max:20',
             'region' => 'nullable|string|max:255',
@@ -323,9 +333,8 @@ class DelegateController extends Controller
         }
 
         $input = $request->all();
-        if (! empty($input['username']) && empty($input['email'])) {
-            $username = trim($input['username']);
-            $input['email'] = str_contains($username, '@') ? $username : strtolower($username) . '@eststar.dz';
+        if (! empty($input['username'])) {
+            $input['username'] = trim($input['username']);
         }
         if (! empty($input['delegateCode'])) {
             $input['employee_id'] = trim($input['delegateCode']);
@@ -334,7 +343,7 @@ class DelegateController extends Controller
 
         $validated = $request->validate([
             'name' => 'sometimes|required|string|max:255',
-            'email' => 'sometimes|required|string|max:255|unique:users,email,' . $delegate->id,
+            'username' => 'sometimes|required|string|max:255|unique:users,username,' . $delegate->id,
             'employee_id' => 'sometimes|nullable|string|max:50|unique:users,employee_id,' . $delegate->id,
             'phone' => 'nullable|string|max:20',
             'region' => 'nullable|string|max:255',
@@ -378,9 +387,9 @@ class DelegateController extends Controller
         }
 
         if ($action === 'delete') {
-            User::whereIn('id', $ids)->where('role', 'delegate')->delete();
+            User::where('role', 'delegate')->whereIn('id', $ids)->delete();
         } elseif (in_array($action, ['online', 'busy', 'offline', 'suspended'])) {
-            User::whereIn('id', $ids)->where('role', 'delegate')->update(['status' => $action]);
+            User::where('role', 'delegate')->whereIn('id', $ids)->update(['status' => $action]);
         }
 
         return response()->json(['message' => 'Bulk action completed successfully']);
@@ -388,42 +397,25 @@ class DelegateController extends Controller
 
     private function generateDelegateCode(): string
     {
-        $latest = User::where('role', 'delegate')->whereNotNull('employee_id')->orderBy('id', 'desc')->first();
-        if ($latest && $latest->employee_id) {
-            preg_match('/(\d+)$/', $latest->employee_id, $matches);
-            if (! empty($matches[1])) {
-                $nextNum = ((int) $matches[1]) + 1;
-                return 'DEL-2026-' . str_pad($nextNum, 6, '0', STR_PAD_LEFT);
-            }
-        }
+        $last = User::where('role', 'delegate')->latest('id')->first();
+        $next = ($last?->id ?? 0) + 1;
 
-        $count = User::where('role', 'delegate')->count() + 1;
-        return 'DEL-2026-' . str_pad($count, 6, '0', STR_PAD_LEFT);
+        return 'DEL-2026-' . str_pad($next, 6, '0', STR_PAD_LEFT);
     }
 
     private function formatDelegate(User $delegate): array
     {
-        $clients = $delegate->clients ?? collect();
-        $clientIds = $clients->pluck('id')->filter()->toArray();
+        $clients = $delegate->relationLoaded('clients') ? $delegate->clients : $delegate->clients()->get();
 
-        // Query real orders created by or assigned to this delegate in database
-        $ordersQuery = \App\Models\Order::where(function ($q) use ($delegate, $clientIds) {
-            $q->where('delegate_id', (string) $delegate->id)
-              ->orWhere('delegate_id', $delegate->id)
-              ->orWhereRaw('LOWER(delegate_name) = ?', [strtolower($delegate->name)]);
-
-            if (!empty($clientIds)) {
-                $q->orWhereIn('client_id', $clientIds);
-            }
-        });
-
+        // Calculate real order & revenue stats if orders relation/table exists
+        $ordersQuery = \App\Models\Order::where('delegate_id', $delegate->id);
         $realTotalOrders = (int) (clone $ordersQuery)->count();
         $realTotalRevenue = (float) (clone $ordersQuery)->where('status', '!=', 'cancelled')->sum('total_amount');
 
         $totalOrders = $realTotalOrders > 0 ? $realTotalOrders : (int) $clients->sum('total_orders');
         $totalRevenue = $realTotalRevenue > 0 ? $realTotalRevenue : (float) $clients->sum('total_spent');
         $delegateCode = $delegate->employee_id ?? ('DEL-2026-' . str_pad($delegate->id, 6, '0', STR_PAD_LEFT));
-        $username = explode('@', $delegate->email)[0] ?? $delegate->name;
+        $username = $delegate->username ?? explode('@', $delegate->email ?? '')[0] ?? $delegate->name;
 
         $clientsCount = $clients->count();
         $activeClientsCount = $clients->where('status', 'active')->count();
@@ -441,7 +433,6 @@ class DelegateController extends Controller
             'delegateCode' => $delegateCode,
             'name' => $delegate->name,
             'username' => $username,
-            'email' => $delegate->email,
             'phone' => $delegate->phone ?? '0550000000',
             'region' => $delegate->region ?? '',
             'wilaya' => $delegate->wilaya ?? '',

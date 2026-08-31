@@ -18,7 +18,7 @@ class UserController extends Controller
             $q = strtolower($search);
             $query->where(function ($query) use ($q) {
                 $query->whereRaw('LOWER(name) LIKE ?', ["%{$q}%"])
-                    ->orWhereRaw('LOWER(email) LIKE ?', ["%{$q}%"])
+                    ->orWhereRaw('LOWER(username) LIKE ?', ["%{$q}%"])
                     ->orWhereRaw('LOWER(employee_id) LIKE ?', ["%{$q}%"])
                     ->orWhere('phone', 'LIKE', "%{$q}%")
                     ->orWhereRaw('LOWER(region) LIKE ?', ["%{$q}%"])
@@ -50,7 +50,7 @@ class UserController extends Controller
 
         $sortField = $request->input('sortField', 'created_at');
         $sortDirection = $request->input('sortDirection', 'desc');
-        $allowedSorts = ['name', 'email', 'employee_id', 'role', 'status', 'created_at', 'last_login_at'];
+        $allowedSorts = ['name', 'username', 'employee_id', 'role', 'status', 'created_at', 'last_login_at'];
         if (! in_array($sortField, $allowedSorts)) {
             $sortField = 'created_at';
         }
@@ -197,7 +197,7 @@ class UserController extends Controller
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'email' => 'required|email|max:255|unique:users,email',
+            'username' => 'nullable|string|max:255|unique:users,username',
             'phone' => 'nullable|string|max:20',
             'role' => 'nullable|string|max:50',
             'region' => 'nullable|string|max:255',
@@ -207,12 +207,22 @@ class UserController extends Controller
             'employee_id' => 'nullable|string|max:50|unique:users,employee_id',
         ]);
 
+        if (empty($validated['username'])) {
+            $baseUsername = strtolower(preg_replace('/[^a-zA-Z0-9_]/', '', str_replace(' ', '.', $validated['name'])));
+            $username = $baseUsername;
+            $counter = 1;
+            while (User::where('username', $username)->exists()) {
+                $username = $baseUsername . $counter++;
+            }
+            $validated['username'] = $username;
+        }
+
         if (empty($validated['employee_id'])) {
             $nextNum = User::count() + 1;
             $validated['employee_id'] = 'EMP-2026-' . str_pad($nextNum, 6, '0', STR_PAD_LEFT);
         }
 
-        $validated['password'] = bcrypt($request->input('password', 'EstStar2026!'));
+        $validated['password'] = bcrypt($request->input('password', 'Sti2026!'));
         $validated['is_active'] = true;
         $validated['role'] = $validated['role'] ?? 'user';
         $validated['status'] = $validated['status'] ?? 'offline';
@@ -229,7 +239,7 @@ class UserController extends Controller
     {
         $validated = $request->validate([
             'name' => 'sometimes|required|string|max:255',
-            'email' => 'sometimes|required|email|max:255|unique:users,email,' . $user->id,
+            'username' => 'sometimes|required|string|max:255|unique:users,username,' . $user->id,
             'phone' => 'nullable|string|max:20',
             'role' => 'nullable|string|max:50',
             'region' => 'nullable|string|max:255',
@@ -285,12 +295,12 @@ class UserController extends Controller
 
         $role = $roleMap[strtolower($user->role)] ?? 'viewer';
         $employeeId = $user->employee_id ?? ('EMP-2026-' . str_pad($user->id, 6, '0', STR_PAD_LEFT));
+        $username = $user->username ?? explode('@', $user->email ?? '')[0] ?? $user->name;
 
         $avatarInitials = strtoupper(implode('', array_map(fn($n) => $n[0] ?? '', explode(' ', $user->name))));
 
         // Dynamic Real-Time Online/Offline status based on active session & recent activity
         $currentAuthId = auth('sanctum')->id() ?? auth()->id() ?? request()->user()?->id;
-        $currentAuthEmail = auth('sanctum')->user()?->email ?? auth()->user()?->email ?? request()->user()?->email;
 
         $computedStatus = $user->status ?? 'offline';
 
@@ -298,9 +308,7 @@ class UserController extends Controller
             $isCurrentActiveUser = false;
             if ($currentAuthId && (string) $user->id === (string) $currentAuthId) {
                 $isCurrentActiveUser = true;
-            } elseif ($currentAuthEmail && strtolower($user->email) === strtolower($currentAuthEmail)) {
-                $isCurrentActiveUser = true;
-            } elseif (strtolower($user->email) === 'admin@eststar.dz' || $user->id == 1) {
+            } elseif ($user->id == 1 || $user->username === 'admin') {
                 $isCurrentActiveUser = true;
             }
 
@@ -320,7 +328,7 @@ class UserController extends Controller
         return [
             'id' => (string) $user->id,
             'name' => $user->name,
-            'email' => $user->email,
+            'username' => $username,
             'phone' => $user->phone ?? '0550000000',
             'employeeId' => $employeeId,
             'role' => $role,

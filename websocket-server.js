@@ -106,7 +106,7 @@ server.on('upgrade', (req, socket) => {
     createFrame(
       JSON.stringify({
         type: 'CONNECTED',
-        message: 'Connected to ESTSTAR Realtime Order Stream',
+        message: 'Connected to STI Realtime Order Stream',
       })
     )
   );
@@ -122,5 +122,5 @@ server.on('upgrade', (req, socket) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`[ESTSTAR Realtime WebSocket Hub] Running on ws://localhost:${PORT}`);
+  console.log(`[STI Realtime WebSocket Hub] Running on ws://localhost:${PORT}`);
 });

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Client;
 use App\Models\User;
+use App\Models\Order;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -22,7 +23,7 @@ class ClientController extends Controller
                 $query->whereRaw('LOWER(name) LIKE ?', ["%{$q}%"])
                     ->orWhereRaw('LOWER(client_code) LIKE ?', ["%{$q}%"])
                     ->orWhere('phone', 'LIKE', "%{$q}%")
-                    ->orWhereRaw('LOWER(email) LIKE ?', ["%{$q}%"])
+                    ->orWhereRaw('LOWER(address) LIKE ?', ["%{$q}%"])
                     ->orWhereRaw('LOWER(region) LIKE ?', ["%{$q}%"])
                     ->orWhereRaw('LOWER(wilaya) LIKE ?', ["%{$q}%"]);
             });
@@ -91,10 +92,12 @@ class ClientController extends Controller
         if ($dId && is_numeric($dId) && User::where('id', $dId)->exists()) {
             $request->merge(['delegate_id' => (int) $dId]);
         } elseif ($dName) {
+            $baseUsername = strtolower(preg_replace('/[^a-zA-Z0-9_]/', '', str_replace(' ', '.', $dName)));
             $user = User::firstOrCreate(
                 ['name' => $dName],
                 [
-                    'email' => strtolower(str_replace(' ', '', $dName)) . '@eststar.dz',
+                    'username' => $baseUsername,
+                    'phone' => '0550000000',
                     'password' => bcrypt('password'),
                     'role' => 'delegate',
                 ]
@@ -106,7 +109,6 @@ class ClientController extends Controller
 
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'email' => 'nullable|email|max:255',
             'phone' => 'required|string|max:20',
             'address' => 'required|string|max:500',
             'region' => 'required|string|max:255',
@@ -139,7 +141,6 @@ class ClientController extends Controller
     {
         $validated = $request->validate([
             'name' => 'sometimes|string|max:255',
-            'email' => 'nullable|email|max:255',
             'phone' => 'sometimes|string|max:20',
             'address' => 'sometimes|string|max:500',
             'region' => 'sometimes|string|max:255',
@@ -177,17 +178,60 @@ class ClientController extends Controller
         $activeClients = Client::where('status', 'active')->count();
         $inactiveClients = Client::where('status', 'inactive')->count();
         $outstandingCredit = (float) Client::sum('outstanding_balance');
-        $totalRevenue = (float) Client::sum('total_spent');
-        $ordersThisMonth = (int) Client::where('last_order_at', '>=', $startOfMonth)->sum('total_orders');
+        
+        $totalRevenue = (float) Order::whereNotIn('status', ['cancelled', 'rejected'])->sum('total_amount');
+        if ($totalRevenue === 0.0) {
+            $totalRevenue = (float) Client::sum('total_spent');
+        }
+
+        $ordersThisMonth = (int) Order::whereMonth('created_at', now()->month)->whereYear('created_at', now()->year)->count();
+        if ($ordersThisMonth === 0) {
+            $ordersThisMonth = (int) Client::where('last_order_at', '>=', $startOfMonth)->sum('total_orders');
+        }
 
         $prevTotalClients = Client::where('created_at', '<=', $endOfLastMonth)->count();
         $prevActiveClients = Client::where('status', 'active')->where('created_at', '<=', $endOfLastMonth)->count();
         $prevInactiveClients = Client::where('status', 'inactive')->where('created_at', '<=', $endOfLastMonth)->count();
         $prevOutstanding = (float) Client::where('created_at', '<=', $endOfLastMonth)->sum('outstanding_balance');
-        $prevRevenue = (float) Client::where('created_at', '<=', $endOfLastMonth)->sum('total_spent');
-        $prevOrders = (int) Client::where('last_order_at', '>=', $startOfLastMonth)
-            ->where('last_order_at', '<=', $endOfLastMonth)
-            ->sum('total_orders');
+        
+        $prevRevenue = (float) Order::whereBetween('created_at', [$startOfLastMonth, $endOfLastMonth])->whereNotIn('status', ['cancelled', 'rejected'])->sum('total_amount');
+        if ($prevRevenue === 0.0) {
+            $prevRevenue = (float) Client::where('created_at', '<=', $endOfLastMonth)->sum('total_spent');
+        }
+
+        $prevOrders = (int) Order::whereBetween('created_at', [$startOfLastMonth, $endOfLastMonth])->count();
+        if ($prevOrders === 0) {
+            $prevOrders = (int) Client::where('last_order_at', '>=', $startOfLastMonth)
+                ->where('last_order_at', '<=', $endOfLastMonth)
+                ->sum('total_orders');
+        }
+
+        // Generate 7-day sparkline arrays from DB
+        $totalClientsSparkline = [];
+        $activeClientsSparkline = [];
+        $inactiveClientsSparkline = [];
+        $outstandingCreditSparkline = [];
+        $ordersThisMonthSparkline = [];
+        $totalRevenueSparkline = [];
+
+        for ($i = 6; $i >= 0; $i--) {
+            $date = now()->subDays($i);
+            $endOfDay = $date->copy()->endOfDay();
+
+            $histTotal = Client::where('created_at', '<=', $endOfDay)->count();
+            $histActive = Client::where('status', 'active')->where('created_at', '<=', $endOfDay)->count();
+            $histInactive = Client::where('status', 'inactive')->where('created_at', '<=', $endOfDay)->count();
+
+            $dayOrders = Order::whereDate('created_at', $date->toDateString())->count();
+            $dayRev = (float) Order::whereDate('created_at', $date->toDateString())->whereNotIn('status', ['cancelled', 'rejected'])->sum('total_amount');
+
+            $totalClientsSparkline[] = $histTotal;
+            $activeClientsSparkline[] = $histActive;
+            $inactiveClientsSparkline[] = $histInactive;
+            $outstandingCreditSparkline[] = round($outstandingCredit, 2);
+            $ordersThisMonthSparkline[] = $dayOrders;
+            $totalRevenueSparkline[] = round($dayRev, 2);
+        }
 
         return response()->json([
             'totalClients' => $totalClients,
@@ -203,6 +247,14 @@ class ClientController extends Controller
                 'outstandingCredit' => $this->trend($outstandingCredit, $prevOutstanding),
                 'ordersThisMonth' => $this->trend($ordersThisMonth, $prevOrders),
                 'totalRevenue' => $this->trend($totalRevenue, $prevRevenue),
+            ],
+            'sparklines' => [
+                'totalClients' => $totalClientsSparkline,
+                'activeClients' => $activeClientsSparkline,
+                'inactiveClients' => $inactiveClientsSparkline,
+                'outstandingCredit' => $outstandingCreditSparkline,
+                'ordersThisMonth' => $ordersThisMonthSparkline,
+                'totalRevenue' => $totalRevenueSparkline,
             ],
         ]);
     }

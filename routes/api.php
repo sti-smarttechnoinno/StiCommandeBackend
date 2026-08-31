@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\RegionController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\WilayaController;
 use App\Http\Controllers\Api\ProductController;
+use App\Http\Controllers\Api\OperatorController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\NotificationController;

@@ -268,7 +268,7 @@ class WilayaController extends Controller
             $formattedDelegate = [
                 'name' => $delegate->name,
                 'phone' => $delegate->phone ?? '+213 550000000',
-                'email' => $delegate->email,
+                'username' => $delegate->username ?? $delegate->name,
                 'avatar' => strtoupper(substr($avatar, 0, 2)),
                 'isOnline' => $delegate->status === 'online',
                 'role' => 'Regional Delegate',

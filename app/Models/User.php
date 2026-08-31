@@ -14,18 +14,19 @@ use Laravel\Sanctum\HasApiTokens;
 /**
  * @property int $id
  * @property string $name
- * @property string $email
+ * @property string $username
+ * @property string|null $email
+ * @property string|null $phone
  * @property string $role
  * @property bool $is_active
  * @property Carbon|null $last_login_at
  * @property Carbon|null $last_seen_at
- * @property Carbon|null $email_verified_at
  * @property string $password
  * @property string|null $remember_token
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
-#[Fillable(['employee_id', 'name', 'email', 'password', 'role', 'is_active', 'phone', 'region', 'wilaya', 'department', 'status', 'two_factor_enabled', 'last_login_at', 'last_seen_at'])]
+#[Fillable(['employee_id', 'name', 'username', 'email', 'phone', 'password', 'role', 'is_active', 'region', 'wilaya', 'department', 'status', 'two_factor_enabled', 'last_login_at', 'last_seen_at'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {

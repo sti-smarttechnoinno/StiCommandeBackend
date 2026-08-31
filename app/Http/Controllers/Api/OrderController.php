@@ -83,7 +83,7 @@ class OrderController extends Controller
         $validatedOrders = Order::whereIn('status', ['validated', 'partially_validated'])->count();
         $deliveringOrders = Order::where('status', 'preparing')->count();
         $deliveredOrders = Order::where('status', 'delivered')->count();
-        $totalRevenue = (float) Order::where('status', '!=', 'cancelled')->sum('total_amount');
+        $totalRevenue = (float) Order::whereNotIn('status', ['cancelled', 'rejected'])->sum('total_amount');
 
         $balance = (float) Order::whereIn('status', ['validated', 'delivered', 'partially_validated'])->sum('total_amount');
         $monthlyOrdersCount = Order::whereMonth('created_at', now()->month)
@@ -91,6 +91,71 @@ class OrderController extends Controller
             ->count();
 
         $productsOrdered = (int) OrderItem::sum('quantity');
+
+        // Growth calculation comparing today vs yesterday
+        $todayStart = now()->startOfDay();
+        $yesterdayStart = now()->subDay()->startOfDay();
+        $yesterdayEnd = now()->subDay()->endOfDay();
+
+        $todayOrders = Order::where('created_at', '>=', $todayStart)->count();
+        $yesterdayOrders = Order::whereBetween('created_at', [$yesterdayStart, $yesterdayEnd])->count();
+        $ordersGrowth = $yesterdayOrders > 0 
+            ? round((($todayOrders - $yesterdayOrders) / $yesterdayOrders) * 100, 1) 
+            : 0.0;
+
+        $todayRevenue = (float) Order::where('created_at', '>=', $todayStart)->whereNotIn('status', ['cancelled', 'rejected'])->sum('total_amount');
+        $yesterdayRevenue = (float) Order::whereBetween('created_at', [$yesterdayStart, $yesterdayEnd])->whereNotIn('status', ['cancelled', 'rejected'])->sum('total_amount');
+        $revenueGrowth = $yesterdayRevenue > 0 
+            ? round((($todayRevenue - $yesterdayRevenue) / $yesterdayRevenue) * 100, 1) 
+            : 0.0;
+
+        $todayPending = Order::where('created_at', '>=', $todayStart)->where('status', 'pending')->count();
+        $yesterdayPending = Order::whereBetween('created_at', [$yesterdayStart, $yesterdayEnd])->where('status', 'pending')->count();
+        $pendingGrowth = $yesterdayPending > 0 
+            ? round((($todayPending - $yesterdayPending) / $yesterdayPending) * 100, 1) 
+            : 0.0;
+
+        $todayValidated = Order::where('created_at', '>=', $todayStart)->whereIn('status', ['validated', 'partially_validated'])->count();
+        $yesterdayValidated = Order::whereBetween('created_at', [$yesterdayStart, $yesterdayEnd])->whereIn('status', ['validated', 'partially_validated'])->count();
+        $validatedGrowth = $yesterdayValidated > 0 
+            ? round((($todayValidated - $yesterdayValidated) / $yesterdayValidated) * 100, 1) 
+            : 0.0;
+
+        $todayDelivered = Order::where('created_at', '>=', $todayStart)->where('status', 'delivered')->count();
+        $yesterdayDelivered = Order::whereBetween('created_at', [$yesterdayStart, $yesterdayEnd])->where('status', 'delivered')->count();
+        $deliveredGrowth = $yesterdayDelivered > 0 
+            ? round((($todayDelivered - $yesterdayDelivered) / $yesterdayDelivered) * 100, 1) 
+            : 0.0;
+
+        // Daily 7-day sparklines
+        $ordersSparkline = [];
+        $revenueSparkline = [];
+        $pendingSparkline = [];
+        $validatedSparkline = [];
+        $deliveredSparkline = [];
+
+        for ($i = 6; $i >= 0; $i--) {
+            $date = now()->subDays($i);
+            $dayOrders = Order::whereDate('created_at', $date->toDateString())->count();
+            $dayRevenue = (float) Order::whereDate('created_at', $date->toDateString())
+                ->whereNotIn('status', ['cancelled', 'rejected'])
+                ->sum('total_amount');
+            $dayPending = Order::whereDate('created_at', $date->toDateString())
+                ->where('status', 'pending')
+                ->count();
+            $dayValidated = Order::whereDate('created_at', $date->toDateString())
+                ->whereIn('status', ['validated', 'partially_validated'])
+                ->count();
+            $dayDelivered = Order::whereDate('created_at', $date->toDateString())
+                ->where('status', 'delivered')
+                ->count();
+
+            $ordersSparkline[] = $dayOrders;
+            $revenueSparkline[] = round($dayRevenue, 2);
+            $pendingSparkline[] = $dayPending;
+            $validatedSparkline[] = $dayValidated;
+            $deliveredSparkline[] = $dayDelivered;
+        }
 
         return response()->json([
             'totalOrders' => $totalOrders,
@@ -102,6 +167,16 @@ class OrderController extends Controller
             'balance' => $balance,
             'monthlyOrdersCount' => $monthlyOrdersCount,
             'productsOrdered' => $productsOrdered,
+            'ordersGrowth' => $ordersGrowth,
+            'revenueGrowth' => $revenueGrowth,
+            'pendingGrowth' => $pendingGrowth,
+            'validatedGrowth' => $validatedGrowth,
+            'deliveredGrowth' => $deliveredGrowth,
+            'ordersSparkline' => $ordersSparkline,
+            'revenueSparkline' => $revenueSparkline,
+            'pendingSparkline' => $pendingSparkline,
+            'validatedSparkline' => $validatedSparkline,
+            'deliveredSparkline' => $deliveredSparkline,
         ]);
     }
 
