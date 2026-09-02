@@ -22,6 +22,31 @@ class OrderController extends Controller
     {
         $query = Order::with(['items.product', 'delegate', 'client.delegate']);
 
+        // Regional Data Scoping for Commercials & Region-Restricted Roles
+        $authUser = auth('sanctum')->user() ?: $request->user();
+        if ($authUser) {
+            $userRole = strtolower($authUser->role ?? '');
+            $isRegionRestricted = in_array($userRole, ['delegate', 'commercial', 'delegue']);
+            if (!$isRegionRestricted) {
+                $roleModel = \App\Models\Role::where('slug', $userRole)->first();
+                if ($roleModel && $roleModel->has_region_restriction) {
+                    $isRegionRestricted = true;
+                }
+            }
+
+            if ($isRegionRestricted) {
+                $query->where(function ($q) use ($authUser) {
+                    if (!empty($authUser->region)) {
+                        $q->where('region', $authUser->region);
+                    }
+                    if (!empty($authUser->wilaya)) {
+                        $q->orWhere('wilaya', $authUser->wilaya);
+                    }
+                    $q->orWhere('delegate_id', $authUser->id);
+                });
+            }
+        }
+
         // Search term (code, client name, delegate name)
         if ($search = $request->query('search')) {
             $query->where(function ($q) use ($search) {
@@ -322,14 +347,26 @@ class OrderController extends Controller
             'items.*.unit_price' => 'nullable|numeric|min:0',
         ]);
 
+        $user = $request->user();
+        if ($user && !$user->hasPermission('orders.create')) {
+            return response()->json([
+                'message' => "Accès non autorisé : votre rôle [{$user->role}] ne dispose pas du droit de créer des commandes."
+            ], 403);
+        }
+
         // Resolve client & delegate details
         $clientName = $request->input('client_name');
         $wilaya = $request->input('wilaya');
         $region = $request->input('region', 'Algiers');
         
-        $user = $request->user();
         $delegateName = $request->input('delegate_name') 
             ?? ($user ? $user->name : null);
+
+        // If commercial is restricted by region, enforce territorial scope
+        if ($user && $user->isRestrictedByRegion() && !empty($user->region)) {
+            $region = $user->region;
+            $delegateName = $user->name;
+        }
 
         if ($clientId = $request->input('client_id')) {
             $client = Client::with('delegate')->find($clientId);
@@ -485,6 +522,13 @@ class OrderController extends Controller
      */
     public function update(Request $request, $id)
     {
+        $user = $request->user();
+        if ($user && !$user->hasPermission('orders.update')) {
+            return response()->json([
+                'message' => "Accès non autorisé : votre rôle [{$user->role}] ne peut pas modifier ou valider les commandes."
+            ], 403);
+        }
+
         $order = Order::with('items')->find($id);
 
         if (!$order) {
@@ -583,6 +627,27 @@ class OrderController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * Delete an order (restricted to orders.delete).
+     */
+    public function destroy(Request $request, $id)
+    {
+        $user = $request->user();
+        if ($user && !$user->hasPermission('orders.delete')) {
+            return response()->json([
+                'message' => "Accès non autorisé : vous ne disposez pas des droits requis pour supprimer des commandes."
+            ], 403);
+        }
+
+        $order = Order::find($id);
+        if (!$order) {
+            return response()->json(['message' => 'Commande introuvable.'], 404);
+        }
+
+        $order->delete();
+        return response()->json(['message' => 'Commande supprimée avec succès.']);
     }
 
     /**

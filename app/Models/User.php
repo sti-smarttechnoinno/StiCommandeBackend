@@ -64,4 +64,74 @@ class User extends Authenticatable
     {
         return $this->hasMany(DelegateObjective::class, 'user_id');
     }
+
+    public function roleModel()
+    {
+        return $this->belongsTo(Role::class, 'role', 'slug');
+    }
+
+    public function getEffectivePermissions(): array
+    {
+        if ($this->isAdmin()) {
+            return [
+                'orders.view', 'orders.create', 'orders.update', 'orders.delete',
+                'clients.view', 'clients.create', 'clients.update', 'clients.delete',
+                'products.view', 'products.manage',
+                'reports.view', 'reports.export',
+                'users.manage', 'settings.manage', '*'
+            ];
+        }
+
+        $role = $this->roleModel;
+        if ($role && is_array($role->permissions)) {
+            return $role->permissions;
+        }
+
+        // Fallbacks for standard legacy roles if not configured in table
+        if ($this->role === 'commercial' || $this->role === 'delegate') {
+            return [
+                'orders.view', 'orders.create', 'orders.update',
+                'clients.view', 'clients.create', 'clients.update',
+                'products.view'
+            ];
+        }
+
+        if ($this->role === 'charge_compte') {
+            return [
+                'orders.view', 'orders.update',
+                'clients.view',
+                'products.view'
+            ];
+        }
+
+        if ($this->role === 'warehouse') {
+            return [
+                'orders.view', 'orders.update',
+                'products.view'
+            ];
+        }
+
+        return ['orders.view', 'clients.view', 'products.view'];
+    }
+
+    public function hasPermission(string $permission): bool
+    {
+        if ($this->isAdmin()) {
+            return true;
+        }
+
+        $permissions = $this->getEffectivePermissions();
+        return in_array('*', $permissions) || in_array($permission, $permissions);
+    }
+
+    public function isRestrictedByRegion(): bool
+    {
+        if ($this->isAdmin()) {
+            return false;
+        }
+        if ($this->role === 'commercial' || $this->role === 'delegate') {
+            return true;
+        }
+        return (bool) ($this->roleModel?->has_region_restriction ?? false);
+    }
 }

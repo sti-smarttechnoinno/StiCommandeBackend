@@ -12,12 +12,17 @@ use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\ReportController;
+use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\DelegateObjectiveController;
 use App\Http\Controllers\Api\ClientObjectiveController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/auth/login', [AuthController::class, 'login']);
 Route::post('/login', [AuthController::class, 'login']);
+
+// Roles & Permissions routes (Public / Auth)
+Route::get('/roles/modules', [RoleController::class, 'modules']);
+Route::get('/roles', [RoleController::class, 'index']);
 
 // Delegate & Client Objectives (Public / Auth)
 Route::get('/delegates/{delegate}/objectives', [DelegateObjectiveController::class, 'index']);
@@ -104,10 +109,20 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::apiResource('/orders', OrderController::class)->except(['index', 'show', 'store']);
 
-    Route::get('/users/kpis', [UserController::class, 'kpis']);
-    Route::get('/users/analytics', [UserController::class, 'analytics']);
-    Route::post('/users/bulk', [UserController::class, 'bulkAction']);
-    Route::apiResource('/users', UserController::class);
+    // User management strictly protected by users.manage permission
+    Route::middleware('permission:users.manage')->group(function () {
+        Route::get('/users/kpis', [UserController::class, 'kpis']);
+        Route::get('/users/analytics', [UserController::class, 'analytics']);
+        Route::post('/users/bulk', [UserController::class, 'bulkAction']);
+        Route::apiResource('/users', UserController::class);
+    });
+
+    // Role modification protected by settings.manage
+    Route::middleware('permission:settings.manage')->group(function () {
+        Route::post('/roles', [RoleController::class, 'store']);
+        Route::put('/roles/{id}', [RoleController::class, 'update']);
+        Route::delete('/roles/{id}', [RoleController::class, 'destroy']);
+    });
 
     Route::post('/wilayas/bulk', [WilayaController::class, 'bulkAction']);
     Route::post('/wilayas', [WilayaController::class, 'store']);

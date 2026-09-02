@@ -20,16 +20,27 @@ class ClientController extends Controller
         // Server-Side Authorization Principle:
         // Automatically scope clients query if the authenticated user is a delegate
         $authUser = auth('sanctum')->user() ?: $request->user();
-        if ($authUser && in_array(strtolower($authUser->role), ['delegate', 'commercial', 'delegue'])) {
-            $query->where(function ($q) use ($authUser) {
-                $q->where('delegate_id', $authUser->id);
-                if (!empty($authUser->region)) {
-                    $q->orWhere('region', $authUser->region);
+        if ($authUser) {
+            $userRole = strtolower($authUser->role ?? '');
+            $isRegionRestricted = in_array($userRole, ['delegate', 'commercial', 'delegue']);
+            if (!$isRegionRestricted) {
+                $roleModel = \App\Models\Role::where('slug', $userRole)->first();
+                if ($roleModel && $roleModel->has_region_restriction) {
+                    $isRegionRestricted = true;
                 }
-                if (!empty($authUser->wilaya)) {
-                    $q->orWhere('wilaya', $authUser->wilaya);
-                }
-            });
+            }
+
+            if ($isRegionRestricted) {
+                $query->where(function ($q) use ($authUser) {
+                    $q->where('delegate_id', $authUser->id);
+                    if (!empty($authUser->region)) {
+                        $q->orWhere('region', $authUser->region);
+                    }
+                    if (!empty($authUser->wilaya)) {
+                        $q->orWhere('wilaya', $authUser->wilaya);
+                    }
+                });
+            }
         }
 
         if ($search = $request->input('search')) {
@@ -94,6 +105,20 @@ class ClientController extends Controller
 
     public function store(Request $request): JsonResponse
     {
+        $user = $request->user();
+        if ($user && !$user->hasPermission('clients.create')) {
+            return response()->json([
+                'message' => "Accès non autorisé : votre rôle [{$user->role}] ne dispose pas du droit de créer des clients."
+            ], 403);
+        }
+
+        if ($user && $user->isRestrictedByRegion() && !empty($user->region)) {
+            $request->merge([
+                'region' => $user->region,
+                'delegate_id' => $user->id,
+            ]);
+        }
+
         if (! $request->has('client_type') && $request->has('clientType')) {
             $request->merge(['client_type' => $request->input('clientType')]);
         }
@@ -194,8 +219,15 @@ class ClientController extends Controller
         ]);
     }
 
-    public function destroy(Client $client): JsonResponse
+    public function destroy(Request $request, Client $client): JsonResponse
     {
+        $user = $request->user();
+        if ($user && !$user->hasPermission('clients.delete')) {
+            return response()->json([
+                'message' => "Accès non autorisé : vous ne disposez pas des droits requis pour supprimer des clients."
+            ], 403);
+        }
+
         $client->delete();
 
         return response()->json(['message' => 'Client deleted successfully']);

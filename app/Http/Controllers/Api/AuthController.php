@@ -61,13 +61,21 @@ class AuthController extends Controller
             ]);
         }
 
-        if (isset($user->is_active) && ! $user->is_active) {
+        $isBlocked = (!$user->is_active) 
+            || in_array(strtolower($user->status ?? ''), ['blocked', 'bloque', 'bloqué', 'locked', 'suspended', 'deactivated']);
+
+        if ($isBlocked) {
             throw ValidationException::withMessages([
-                'username' => ['Your account has been deactivated.'],
+                'username' => ['Votre compte est actuellement bloqué. Vous ne pouvez pas vous connecter.'],
             ]);
         }
 
-        $user->update(['last_login_at' => now(), 'last_seen_at' => now(), 'status' => 'online']);
+        $user->update([
+            'last_login_at' => now(),
+            'last_seen_at' => now(),
+            'status' => 'authorized',
+            'is_active' => true,
+        ]);
 
         if ($user->role === 'delegate') {
             try {
@@ -92,11 +100,15 @@ class AuthController extends Controller
                 'id' => (string) $user->id,
                 'name' => $user->name,
                 'username' => $usernameHandle,
+                'email' => $user->email ?? '',
                 'phone' => $user->phone ?? '',
                 'delegateCode' => $user->employee_id ?? ('DEL-2026-' . str_pad($user->id, 6, '0', STR_PAD_LEFT)),
                 'role' => $user->role,
-                'region' => $user->region ?? 'Algiers',
-                'wilaya' => $user->wilaya ?? '16 - Alger',
+                'role_name' => $user->roleModel?->name ?? ucfirst($user->role),
+                'permissions' => $user->getEffectivePermissions(),
+                'has_region_restriction' => $user->isRestrictedByRegion(),
+                'region' => $user->region ?? '',
+                'wilaya' => $user->wilaya ?? '',
                 'status' => 'online',
                 'is_active' => (bool) ($user->is_active ?? true),
                 'avatar' => strtoupper(substr($user->name, 0, 1)),
@@ -137,12 +149,18 @@ class AuthController extends Controller
 
         return response()->json([
             'user' => [
-                'id' => $user->id,
+                'id' => (string) $user->id,
                 'name' => $user->name,
                 'username' => $user->username ?? $user->name,
+                'email' => $user->email ?? '',
                 'phone' => $user->phone ?? '',
                 'role' => $user->role,
-                'is_active' => $user->is_active,
+                'role_name' => $user->roleModel?->name ?? ucfirst($user->role),
+                'permissions' => $user->getEffectivePermissions(),
+                'has_region_restriction' => $user->isRestrictedByRegion(),
+                'region' => $user->region ?? '',
+                'wilaya' => $user->wilaya ?? '',
+                'is_active' => (bool) ($user->is_active ?? true),
                 'avatar' => strtoupper(substr($user->name, 0, 1)),
                 'last_login_at' => $user->last_login_at?->toISOString(),
             ],

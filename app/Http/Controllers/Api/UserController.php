@@ -198,6 +198,7 @@ class UserController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'username' => 'nullable|string|max:255|unique:users,username',
+            'email' => 'nullable|email|max:255|unique:users,email',
             'phone' => 'nullable|string|max:20',
             'role' => 'nullable|string|max:50',
             'region' => 'nullable|string|max:255',
@@ -205,6 +206,7 @@ class UserController extends Controller
             'department' => 'nullable|string|max:255',
             'status' => 'nullable|string|max:50',
             'employee_id' => 'nullable|string|max:50|unique:users,employee_id',
+            'password' => 'nullable|string|min:6',
         ]);
 
         if (empty($validated['username'])) {
@@ -222,16 +224,29 @@ class UserController extends Controller
             $validated['employee_id'] = 'EMP-2026-' . str_pad($nextNum, 6, '0', STR_PAD_LEFT);
         }
 
-        $validated['password'] = bcrypt($request->input('password', 'Sti2026!'));
+        $passwordRaw = !empty($validated['password']) ? $validated['password'] : 'Sti2026!';
+        $validated['password'] = bcrypt($passwordRaw);
         $validated['is_active'] = true;
-        $validated['role'] = $validated['role'] ?? 'user';
-        $validated['status'] = $validated['status'] ?? 'offline';
+        
+        // Normalize role
+        $role = $validated['role'] ?? 'user';
+        if ($role === 'administrator') $role = 'admin';
+        if ($role === 'viewer') $role = 'user';
+        // Account Status: authorized (can login) or blocked (cannot login)
+        $rawStatus = strtolower($validated['status'] ?? 'authorized');
+        if (in_array($rawStatus, ['blocked', 'bloque', 'bloqué', 'locked', 'suspended'])) {
+            $validated['status'] = 'blocked';
+            $validated['is_active'] = false;
+        } else {
+            $validated['status'] = 'authorized';
+            $validated['is_active'] = true;
+        }
 
         $user = User::create($validated);
 
         return response()->json([
             'data' => $this->formatUser($user),
-            'message' => 'User created successfully',
+            'message' => 'Utilisateur créé avec succès.',
         ], 201);
     }
 
@@ -249,6 +264,19 @@ class UserController extends Controller
             'is_active' => 'nullable|boolean',
             'two_factor_enabled' => 'nullable|boolean',
         ]);
+
+        if (isset($validated['status'])) {
+            $rawStatus = strtolower($validated['status']);
+            if (in_array($rawStatus, ['blocked', 'bloque', 'bloqué', 'locked', 'suspended'])) {
+                $validated['status'] = 'blocked';
+                $validated['is_active'] = false;
+            } else {
+                $validated['status'] = 'authorized';
+                $validated['is_active'] = true;
+            }
+        } elseif (isset($validated['is_active'])) {
+            $validated['status'] = $validated['is_active'] ? 'authorized' : 'blocked';
+        }
 
         $user->update($validated);
 
@@ -289,53 +317,39 @@ class UserController extends Controller
             'administrator' => 'administrator',
             'manager' => 'manager',
             'delegate' => 'delegate',
+            'commercial' => 'commercial',
+            'charge_compte' => 'charge_compte',
+            'warehouse' => 'warehouse',
             'user' => 'viewer',
             'viewer' => 'viewer',
         ];
 
-        $role = $roleMap[strtolower($user->role)] ?? 'viewer';
+        $userRoleLower = strtolower($user->role ?? 'user');
+        $role = $roleMap[$userRoleLower] ?? $userRoleLower;
         $employeeId = $user->employee_id ?? ('EMP-2026-' . str_pad($user->id, 6, '0', STR_PAD_LEFT));
         $username = $user->username ?? explode('@', $user->email ?? '')[0] ?? $user->name;
 
         $avatarInitials = strtoupper(implode('', array_map(fn($n) => $n[0] ?? '', explode(' ', $user->name))));
 
-        // Dynamic Real-Time Online/Offline status based on active session & recent activity
-        $currentAuthId = auth('sanctum')->id() ?? auth()->id() ?? request()->user()?->id;
-
-        $computedStatus = $user->status ?? 'offline';
-
-        if (!in_array($computedStatus, ['locked', 'suspended', 'invited'])) {
-            $isCurrentActiveUser = false;
-            if ($currentAuthId && (string) $user->id === (string) $currentAuthId) {
-                $isCurrentActiveUser = true;
-            } elseif ($user->id == 1 || $user->username === 'admin') {
-                $isCurrentActiveUser = true;
-            }
-
-            if ($isCurrentActiveUser) {
-                $computedStatus = 'online';
-                // Keep last_login_at fresh for active logged in user
-                if (!$user->last_login_at || $user->last_login_at->lt(now()->subMinutes(5))) {
-                    $user->updateQuietly(['last_login_at' => now(), 'status' => 'online']);
-                }
-            } elseif ($user->last_login_at && $user->last_login_at->gt(now()->subMinutes(15))) {
-                $computedStatus = 'online';
-            } else {
-                $computedStatus = 'offline';
-            }
-        }
+        $isBlocked = (!$user->is_active) 
+            || in_array(strtolower($user->status ?? ''), ['blocked', 'bloque', 'bloqué', 'locked', 'suspended', 'deactivated']);
+        $accountStatus = $isBlocked ? 'blocked' : 'authorized';
 
         return [
             'id' => (string) $user->id,
             'name' => $user->name,
             'username' => $username,
+            'email' => $user->email ?? '',
             'phone' => $user->phone ?? '0550000000',
             'employeeId' => $employeeId,
             'role' => $role,
-            'region' => $user->region ?? 'Algiers',
-            'wilaya' => $user->wilaya ?? '16 - Alger',
+            'region' => $user->region ?? '',
+            'wilaya' => $user->wilaya ?? '',
             'department' => $user->department ?? 'Commercial Operations',
-            'status' => $computedStatus,
+            'status' => $accountStatus,
+            'isActive' => !$isBlocked,
+            'is_active' => !$isBlocked,
+            'isOnline' => $user->isOnline(),
             'lastLogin' => $user->last_login_at ? $user->last_login_at->diffForHumans() : 'Never logged in',
             'lastLoginDate' => $user->last_login_at ? $user->last_login_at->toDateTimeString() : null,
             'twoFactorEnabled' => (bool) $user->two_factor_enabled,
