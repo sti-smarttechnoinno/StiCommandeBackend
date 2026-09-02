@@ -90,12 +90,35 @@ class ClientController extends Controller
         $query->orderBy($sortField, $sortDirection === 'asc' ? 'asc' : 'desc');
 
         $page = max(1, (int) $request->input('page', 1));
-        $pageSize = max(1, min(100, (int) $request->input('pageSize', 10)));
+        $pageSize = max(1, min(200, (int) $request->input('pageSize', 10)));
         $total = (clone $query)->count();
         $clients = $query->offset(($page - 1) * $pageSize)->limit($pageSize)->get();
 
+        $clientIds = $clients->pluck('id');
+        $currentYear = (int) now()->year;
+        $currentMonth = (int) now()->month;
+        $monthStart = now()->startOfMonth();
+        $monthEnd = now()->endOfMonth();
+
+        $objectives = \App\Models\ClientObjective::whereIn('client_id', $clientIds)
+            ->where('year', $currentYear)
+            ->where('month', $currentMonth)
+            ->get()
+            ->keyBy('client_id');
+
+        $monthOrders = \App\Models\Order::whereIn('client_id', $clientIds)
+            ->whereBetween('created_at', [$monthStart, $monthEnd])
+            ->where('status', '!=', 'cancelled')
+            ->with(['items.product'])
+            ->get()
+            ->groupBy('client_id');
+
         return response()->json([
-            'data' => $clients->map(fn ($client) => $this->formatClient($client)),
+            'data' => $clients->map(fn ($client) => $this->formatClient(
+                $client,
+                $objectives->get($client->id),
+                $monthOrders->get($client->id) ?? collect()
+            )),
             'total' => $total,
             'page' => $page,
             'pageSize' => $pageSize,
@@ -398,7 +421,7 @@ class ClientController extends Controller
     /**
      * @return array{id: string, clientCode: string, name: string, email: string|null, phone: string, address: string, region: string, wilaya: string, delegateId: string|null, delegateName: string|null, clientType: string, status: string, creditLimit: float, outstandingBalance: float, totalOrders: int, totalSpent: float, lastOrderDate: string|null, createdAt: string}
      */
-    private function formatClient(Client $client): array
+    private function formatClient(Client $client, ?\App\Models\ClientObjective $objective = null, $monthOrders = null): array
     {
         $delegate = $client->delegate;
         $delegateIsOnline = false;
@@ -409,6 +432,59 @@ class ClientController extends Controller
             $delegateIsOnline = $isRecent && $delegate->status !== 'offline' && $delegate->status !== 'suspended';
             $delegateStatus = $delegateIsOnline ? 'online' : ($delegate->status === 'suspended' ? 'suspended' : 'offline');
         }
+
+        if ($monthOrders === null) {
+            $currentYear = (int) now()->year;
+            $currentMonth = (int) now()->month;
+            $objective = \App\Models\ClientObjective::where('client_id', $client->id)
+                ->where('year', $currentYear)
+                ->where('month', $currentMonth)
+                ->first();
+
+            $monthOrders = \App\Models\Order::where('client_id', $client->id)
+                ->whereBetween('created_at', [now()->startOfMonth(), now()->endOfMonth()])
+                ->where('status', '!=', 'cancelled')
+                ->with(['items.product'])
+                ->get();
+        }
+
+        $achievedRevenue = 0.0;
+        foreach ($monthOrders as $ord) {
+            if ($ord->items && $ord->items->isNotEmpty()) {
+                foreach ($ord->items as $item) {
+                    $nominalPrice = (float) ($item->product?->nominal_price ?? $item->unit_price);
+                    $qty = (int) ($item->quantity ?? 1);
+                    $achievedRevenue += ($nominalPrice * $qty);
+                }
+            } else {
+                $achievedRevenue += (float) ($ord->total_amount ?? 0.0);
+            }
+        }
+
+        $achievedOrders = $monthOrders->count();
+        $targetRevenue = $objective ? (float) $objective->target_revenue : 0.0;
+        $targetOrders = $objective ? (int) $objective->target_orders : 0;
+        $revenuePercentage = $targetRevenue > 0
+            ? round(($achievedRevenue / $targetRevenue) * 100, 1)
+            : ($achievedRevenue > 0 ? 100.0 : 0.0);
+
+        $monthNamesFr = [
+            1 => 'Janvier', 2 => 'Février', 3 => 'Mars', 4 => 'Avril',
+            5 => 'Mai', 6 => 'Juin', 7 => 'Juillet', 8 => 'Août',
+            9 => 'Septembre', 10 => 'Octobre', 11 => 'Novembre', 12 => 'Décembre',
+        ];
+        $cMonth = (int) now()->month;
+        $cYear = (int) now()->year;
+
+        $objectivePayload = [
+            'isConfigured' => ($objective !== null && $targetRevenue > 0),
+            'targetRevenue' => $targetRevenue,
+            'achievedRevenue' => round($achievedRevenue, 2),
+            'revenuePercentage' => $revenuePercentage,
+            'targetOrders' => $targetOrders,
+            'achievedOrders' => $achievedOrders,
+            'monthName' => ($monthNamesFr[$cMonth] ?? "Mois $cMonth") . " $cYear",
+        ];
 
         return [
             'id' => (string) $client->id,
@@ -431,6 +507,7 @@ class ClientController extends Controller
             'totalSpent' => (float) $client->total_spent,
             'lastOrderDate' => $client->last_order_at?->toISOString(),
             'createdAt' => $client->created_at->toISOString(),
+            'objective' => $objectivePayload,
         ];
     }
 

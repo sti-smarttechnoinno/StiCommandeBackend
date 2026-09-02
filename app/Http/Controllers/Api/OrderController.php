@@ -224,8 +224,8 @@ class OrderController extends Controller
             }
         }
 
-        $targetRevenue = $delegateObjective ? (float) $delegateObjective->target_revenue : 2500000.0;
-        $targetOrders = $delegateObjective ? (int) $delegateObjective->target_orders : 40;
+        $targetRevenue = $delegateObjective ? (float) $delegateObjective->target_revenue : 0.0;
+        $targetOrders = $delegateObjective ? (int) $delegateObjective->target_orders : 0;
 
         $revenuePercentage = $targetRevenue > 0
             ? round(($achievedMonthlyRevenue / $targetRevenue) * 100, 1)
@@ -239,7 +239,7 @@ class OrderController extends Controller
             'revenuePercentage' => $revenuePercentage,
             'targetOrders' => $targetOrders,
             'achievedOrders' => $achievedMonthlyOrders,
-            'isConfigured' => ($delegateObjective !== null),
+            'isConfigured' => ($delegateObjective !== null && $targetRevenue > 0),
         ];
 
         return response()->json([
