@@ -10,6 +10,9 @@
 /resources/js/wayfinder
 /storage/*.key
 /storage/pail
+/storage/app/firebase-credentials.json
+/storage/app/*firebase*.json
+*firebase-credentials*.json
 /vendor
 .env
 .env.backup

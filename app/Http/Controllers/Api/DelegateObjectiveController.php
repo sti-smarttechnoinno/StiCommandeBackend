@@ -29,9 +29,8 @@ class DelegateObjectiveController extends Controller
             ->orderBy('month', 'desc')
             ->get();
 
-        // Check if current month objective exists, if not construct a virtual one
-        $hasCurrentMonth = $objectives->contains(function ($obj) use ($currentYear, $currentMonth) {
-            return $obj->year === $currentYear && $obj->month === $currentMonth;
+        $objectivesByPeriod = $objectives->keyBy(function ($obj) {
+            return "{$obj->year}-{$obj->month}";
         });
 
         $monthNamesFr = [
@@ -40,19 +39,72 @@ class DelegateObjectiveController extends Controller
             9 => 'Septembre', 10 => 'Octobre', 11 => 'Novembre', 12 => 'Décembre',
         ];
 
+        // Gather all relevant periods (current month, defined objectives, and past months with orders)
+        $orderDates = Order::where(function ($q) use ($delegate) {
+            $q->where('delegate_id', $delegate->id)
+              ->orWhere('delegate_name', $delegate->name);
+        })
+        ->where('status', '!=', 'cancelled')
+        ->pluck('created_at');
+
+        $periods = collect();
+
+        // Always include current month
+        $periods->put("{$currentYear}-{$currentMonth}", [
+            'year' => $currentYear,
+            'month' => $currentMonth,
+        ]);
+
+        // Include all configured objective periods
+        foreach ($objectives as $obj) {
+            $periods->put("{$obj->year}-{$obj->month}", [
+                'year' => (int) $obj->year,
+                'month' => (int) $obj->month,
+            ]);
+        }
+
+        // Include any past month where delegate had orders
+        foreach ($orderDates as $date) {
+            if ($date) {
+                $cDate = Carbon::parse($date);
+                $y = (int) $cDate->year;
+                $m = (int) $cDate->month;
+                $periods->put("{$y}-{$m}", [
+                    'year' => $y,
+                    'month' => $m,
+                ]);
+            }
+        }
+
         $computeMonthStats = function (int $year, int $month, ?DelegateObjective $obj) use ($delegate, $currentYear, $currentMonth, $monthNamesFr) {
             $startDate = Carbon::createFromDate($year, $month, 1)->startOfMonth();
             $endDate = Carbon::createFromDate($year, $month, 1)->endOfMonth();
 
-            $ordersQuery = Order::where(function ($q) use ($delegate) {
+            $orders = Order::where(function ($q) use ($delegate) {
                 $q->where('delegate_id', $delegate->id)
                   ->orWhere('delegate_name', $delegate->name);
             })
             ->whereBetween('created_at', [$startDate, $endDate])
-            ->where('status', '!=', 'cancelled');
+            ->where('status', '!=', 'cancelled')
+            ->with(['items.product'])
+            ->get();
 
-            $achievedRevenue = (float) (clone $ordersQuery)->sum('total_amount');
-            $achievedOrders = (int) (clone $ordersQuery)->count();
+            $achievedOrders = $orders->count();
+            $achievedRevenue = 0.0;
+            $actualRevenue = (float) $orders->sum('total_amount');
+
+            // Calculate achieved revenue using Catalogue Nominal Unit Price: Quantity * Product Nominal Price
+            foreach ($orders as $order) {
+                if ($order->items->isNotEmpty()) {
+                    foreach ($order->items as $item) {
+                        $nominalPrice = (float) ($item->product?->nominal_price ?? $item->unit_price);
+                        $qty = (int) ($item->quantity ?? 1);
+                        $achievedRevenue += ($nominalPrice * $qty);
+                    }
+                } else {
+                    $achievedRevenue += (float) $order->total_amount;
+                }
+            }
 
             $targetRevenue = $obj ? (float) $obj->target_revenue : 0.0;
             $targetOrders = $obj ? (int) $obj->target_orders : 0;
@@ -68,7 +120,6 @@ class DelegateObjectiveController extends Controller
                 : ($achievedOrders > 0 ? 100.0 : 0.0);
 
             $isCurrent = ($year === $currentYear && $month === $currentMonth);
-            $isPast = ($year < $currentYear || ($year === $currentYear && $month < $currentMonth));
             $isUpcoming = ($year > $currentYear || ($year === $currentYear && $month > $currentMonth));
 
             if ($targetRevenue > 0 && $achievedRevenue >= $targetRevenue) {
@@ -87,8 +138,9 @@ class DelegateObjectiveController extends Controller
                 'month' => $month,
                 'monthName' => ($monthNamesFr[$month] ?? "Mois $month") . " $year",
                 'targetRevenue' => $targetRevenue,
-                'achievedRevenue' => $achievedRevenue,
-                'remainingRevenue' => max(0, $targetRevenue - $achievedRevenue),
+                'achievedRevenue' => round($achievedRevenue, 2),
+                'actualRevenue' => round($actualRevenue, 2),
+                'remainingRevenue' => max(0, round($targetRevenue - $achievedRevenue, 2)),
                 'revenuePercentage' => $revenuePercentage,
                 'targetOrders' => $targetOrders,
                 'achievedOrders' => $achievedOrders,
@@ -103,21 +155,16 @@ class DelegateObjectiveController extends Controller
         $archive = [];
         $currentMonthData = null;
 
-        // If current month is not in DB, compute default view
-        if (!$hasCurrentMonth) {
-            $currentMonthData = $computeMonthStats($currentYear, $currentMonth, null);
-            $archive[] = $currentMonthData;
-        }
-
-        foreach ($objectives as $obj) {
-            $stats = $computeMonthStats($obj->year, $obj->month, $obj);
-            if ($obj->year === $currentYear && $obj->month === $currentMonth) {
+        foreach ($periods as $key => $p) {
+            $obj = $objectivesByPeriod->get($key);
+            $stats = $computeMonthStats($p['year'], $p['month'], $obj);
+            if ($p['year'] === $currentYear && $p['month'] === $currentMonth) {
                 $currentMonthData = $stats;
             }
             $archive[] = $stats;
         }
 
-        // Sort archive by year desc, month desc
+        // Sort archive chronologically: year desc, month desc
         usort($archive, function ($a, $b) {
             if ($a['year'] === $b['year']) {
                 return $b['month'] <=> $a['month'];
@@ -130,7 +177,7 @@ class DelegateObjectiveController extends Controller
             'delegateName' => $delegate->name,
             'currentMonth' => $currentMonthData ?? $computeMonthStats($currentYear, $currentMonth, null),
             'archive' => $archive,
-            'totalObjectivesCount' => count($objectives),
+            'totalObjectivesCount' => count($archive),
         ]);
     }
 
@@ -179,6 +226,64 @@ class DelegateObjectiveController extends Controller
                 'notes' => $validated['notes'] ?? null,
             ]
         );
+
+        $monthNamesFr = [
+            1 => 'Janvier', 2 => 'Février', 3 => 'Mars', 4 => 'Avril',
+            5 => 'Mai', 6 => 'Juin', 7 => 'Juillet', 8 => 'Août',
+            9 => 'Septembre', 10 => 'Octobre', 11 => 'Novembre', 12 => 'Décembre',
+        ];
+        $monthName = $monthNamesFr[(int) $validated['month']] ?? 'Mois ' . $validated['month'];
+
+        $userLocale = strtolower($delegate->locale ?? 'fr');
+        if ($userLocale === 'ar') {
+            $notifTitle = "تم تحديد الهدف الشهري ({$validated['month']}/{$validated['year']})";
+            $notifBody = 'تم تحديد هدف هذا الشهر، اضغط للاطلاع عليه.';
+        } elseif ($userLocale === 'en') {
+            $notifTitle = "Monthly Objective Set ({$validated['month']}/{$validated['year']})";
+            $notifBody = 'The objective for this month has been set. Tap to view it.';
+        } else {
+            $notifTitle = "Objectif Mensuel Fixé ({$monthName} {$validated['year']})";
+            $notifBody = "Votre objectif pour ce mois a été fixé. Cliquez pour le consulter.";
+        }
+
+        // 1. Create in-app system notification record
+        try {
+            \App\Models\Notification::create([
+                'title' => $notifTitle,
+                'description' => $notifBody,
+                'category' => 'system',
+                'priority' => 'high',
+                'status' => 'unread',
+                'user' => $delegate->name,
+                'region' => $delegate->region ?? 'All',
+                'module' => 'Objectives',
+                'reference_id' => "OBJ-{$objective->id}",
+                'read' => false,
+            ]);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning("Could not create objective notification record: " . $e->getMessage());
+        }
+
+        // 2. Dispatch FCM Push Notification (HTTP v1)
+        try {
+            $targetRecipient = !empty($delegate->fcm_token) ? $delegate->fcm_token : '/topics/sti_delegates';
+            app(\App\Services\FirebaseService::class)->sendPush(
+                $targetRecipient,
+                $notifTitle,
+                $notifBody,
+                [
+                    'type' => 'monthly_objective',
+                    'delegate_id' => (string) $delegate->id,
+                    'delegate_name' => (string) $delegate->name,
+                    'year' => (string) $validated['year'],
+                    'month' => (string) $validated['month'],
+                    'target_revenue' => (string) $validated['target_revenue'],
+                    'click_action' => 'FLUTTER_NOTIFICATION_CLICK',
+                ]
+            );
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning("FCM objective push failed: " . $e->getMessage());
+        }
 
         return response()->json([
             'data' => $objective,

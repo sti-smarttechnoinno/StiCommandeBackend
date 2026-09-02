@@ -12,7 +12,10 @@ class DelegateController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = User::where('role', 'delegate')->with('clients');
+        $query = User::where('role', 'delegate')
+            ->where('username', '!=', 'unassigned')
+            ->where('name', '!=', 'Unassigned')
+            ->with('clients');
 
         if ($search = $request->input('search')) {
             $q = strtolower($search);

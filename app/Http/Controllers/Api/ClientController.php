@@ -17,6 +17,21 @@ class ClientController extends Controller
     {
         $query = Client::with('delegate');
 
+        // Server-Side Authorization Principle:
+        // Automatically scope clients query if the authenticated user is a delegate
+        $authUser = auth('sanctum')->user() ?: $request->user();
+        if ($authUser && in_array(strtolower($authUser->role), ['delegate', 'commercial', 'delegue'])) {
+            $query->where(function ($q) use ($authUser) {
+                $q->where('delegate_id', $authUser->id);
+                if (!empty($authUser->region)) {
+                    $q->orWhere('region', $authUser->region);
+                }
+                if (!empty($authUser->wilaya)) {
+                    $q->orWhere('wilaya', $authUser->wilaya);
+                }
+            });
+        }
+
         if ($search = $request->input('search')) {
             $q = strtolower($search);
             $query->where(function ($query) use ($q) {
@@ -89,22 +104,17 @@ class ClientController extends Controller
         $dId = $request->input('delegate_id', $request->input('delegateId'));
         $dName = $request->input('delegate_name', $request->input('delegateName'));
 
-        if ($dId && is_numeric($dId) && User::where('id', $dId)->exists()) {
+        if ($dId && is_numeric($dId) && User::where('id', $dId)->where('name', '!=', 'Unassigned')->exists()) {
             $request->merge(['delegate_id' => (int) $dId]);
-        } elseif ($dName) {
-            $baseUsername = strtolower(preg_replace('/[^a-zA-Z0-9_]/', '', str_replace(' ', '.', $dName)));
-            $user = User::firstOrCreate(
-                ['name' => $dName],
-                [
-                    'username' => $baseUsername,
-                    'phone' => '0550000000',
-                    'password' => bcrypt('password'),
-                    'role' => 'delegate',
-                ]
-            );
-            $request->merge(['delegate_id' => $user->id]);
+        } elseif ($dName && !in_array(strtolower(trim($dName)), ['unassigned', 'non assigné', 'none', 'null', ''])) {
+            $user = User::where('name', $dName)->where('name', '!=', 'Unassigned')->first();
+            $request->merge(['delegate_id' => $user?->id]);
         } else {
             $request->merge(['delegate_id' => null]);
+        }
+
+        if (! $request->has('outstanding_balance') && $request->has('outstandingBalance')) {
+            $request->merge(['outstanding_balance' => $request->input('outstandingBalance')]);
         }
 
         $validated = $request->validate([
@@ -116,13 +126,37 @@ class ClientController extends Controller
             'delegate_id' => 'nullable|exists:users,id',
             'client_type' => 'required|in:retail,wholesale,corporate,government',
             'credit_limit' => 'nullable|numeric|min:0',
+            'outstanding_balance' => 'nullable|numeric|min:0',
             'notes' => 'nullable|string',
         ]);
 
         $validated['client_code'] = $request->input('client_code', $this->generateClientCode());
         $validated['status'] = $request->input('status', 'active');
+        $validated['outstanding_balance'] = (float) ($request->input('outstanding_balance', 0));
 
         $client = Client::create($validated);
+
+        // If an initial monthly objective was specified during creation, save it to client_objectives
+        $targetRev = (float) ($request->input('target_revenue')
+            ?? $request->input('targetRevenue')
+            ?? $request->input('monthly_objective')
+            ?? $request->input('monthlyObjective')
+            ?? 0);
+
+        if ($targetRev > 0) {
+            \App\Models\ClientObjective::updateOrCreate(
+                [
+                    'client_id' => $client->id,
+                    'year' => (int) now()->year,
+                    'month' => (int) now()->month,
+                ],
+                [
+                    'target_revenue' => $targetRev,
+                    'target_orders' => (int) ($request->input('target_orders') ?? $request->input('targetOrders') ?? 0),
+                    'notes' => 'Objectif initial fixé à la création du compte',
+                ]
+            );
+        }
 
         return response()->json([
             'data' => $this->formatClient($client->load('delegate')),

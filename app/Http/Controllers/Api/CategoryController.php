@@ -46,16 +46,22 @@ class CategoryController extends Controller
             'slug' => 'nullable|string|max:255|unique:categories,slug',
             'icon' => 'nullable|string|max:100',
             'description' => 'nullable|string',
+            'workflow_type' => 'nullable|string|in:virtual,physical',
+            'requires_delivery' => 'nullable|boolean',
             'is_active' => 'nullable|boolean',
         ]);
 
         $slug = $validated['slug'] ?? Str::slug($validated['name'], '_');
+        $workflowType = $validated['workflow_type'] ?? 'physical';
+        $requiresDelivery = $validated['requires_delivery'] ?? ($workflowType === 'physical');
 
         $category = Category::create([
             'name' => $validated['name'],
             'slug' => $slug,
             'icon' => $validated['icon'] ?? 'package',
             'description' => $validated['description'] ?? null,
+            'workflow_type' => $workflowType,
+            'requires_delivery' => $requiresDelivery,
             'is_active' => $validated['is_active'] ?? true,
         ]);
 
@@ -75,11 +81,17 @@ class CategoryController extends Controller
             'slug' => ['sometimes', 'required', 'string', 'max:255', Rule::unique('categories')->ignore($category->id)],
             'icon' => 'nullable|string|max:100',
             'description' => 'nullable|string',
+            'workflow_type' => 'nullable|string|in:virtual,physical',
+            'requires_delivery' => 'nullable|boolean',
             'is_active' => 'nullable|boolean',
         ]);
 
         if (isset($validated['name']) && !isset($validated['slug'])) {
             $validated['slug'] = Str::slug($validated['name'], '_');
+        }
+
+        if (isset($validated['workflow_type']) && !isset($validated['requires_delivery'])) {
+            $validated['requires_delivery'] = ($validated['workflow_type'] === 'physical');
         }
 
         $category->update($validated);

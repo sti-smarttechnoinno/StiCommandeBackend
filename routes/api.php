@@ -46,6 +46,9 @@ Route::get('/notifications', [NotificationController::class, 'index']);
 Route::post('/notifications', [NotificationController::class, 'store']);
 Route::put('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
 Route::post('/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
+Route::get('/notifications/sent-broadcasts', [NotificationController::class, 'sentBroadcasts']);
+Route::post('/notifications/send-broadcast', [NotificationController::class, 'sendBroadcast']);
+Route::post('/notifications/fcm-token', [NotificationController::class, 'updateFcmToken']);
 Route::post('/notifications/bulk', [NotificationController::class, 'bulkAction']);
 Route::post('/notifications/announcements', [NotificationController::class, 'storeAnnouncement']);
 

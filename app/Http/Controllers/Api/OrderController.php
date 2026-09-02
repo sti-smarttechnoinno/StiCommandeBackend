@@ -7,6 +7,8 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\Client;
+use App\Models\Category;
+use App\Models\OrderValidationLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -18,7 +20,7 @@ class OrderController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Order::with(['items', 'delegate', 'client.delegate']);
+        $query = Order::with(['items.product', 'delegate', 'client.delegate']);
 
         // Search term (code, client name, delegate name)
         if ($search = $request->query('search')) {
@@ -54,14 +56,14 @@ class OrderController extends Controller
         $pageSize = (int) $request->query('pageSize', 15);
         $orders = $query->paginate($pageSize);
 
-        // Fill delegate_name if null or unassigned from relationships
+        // Fill delegate_name and enrich with workflow metadata
         $transformedItems = collect($orders->items())->map(function ($order) {
             if (empty($order->delegate_name) || strtolower($order->delegate_name) === 'unassigned') {
                 $order->delegate_name = $order->delegate?->name 
                     ?? $order->client?->delegate?->name 
                     ?? 'Délégué Commercial';
             }
-            return $order;
+            return $this->enrichOrderWithCategoryWorkflow($order);
         });
 
         return response()->json([
@@ -85,9 +87,13 @@ class OrderController extends Controller
         $deliveredOrders = Order::where('status', 'delivered')->count();
         $totalRevenue = (float) Order::whereNotIn('status', ['cancelled', 'rejected'])->sum('total_amount');
 
-        $balance = (float) Order::whereIn('status', ['validated', 'delivered', 'partially_validated'])->sum('total_amount');
+        $balance = (float) Order::whereMonth('created_at', now()->month)
+            ->whereYear('created_at', now()->year)
+            ->whereNotIn('status', ['cancelled', 'rejected'])
+            ->sum('total_amount');
         $monthlyOrdersCount = Order::whereMonth('created_at', now()->month)
             ->whereYear('created_at', now()->year)
+            ->whereNotIn('status', ['cancelled', 'rejected'])
             ->count();
 
         $productsOrdered = (int) OrderItem::sum('quantity');
@@ -157,6 +163,60 @@ class OrderController extends Controller
             $deliveredSparkline[] = $dayDelivered;
         }
 
+        // Real Active Month Objective from DB
+        $currentYear = (int) now()->year;
+        $currentMonth = (int) now()->month;
+        $monthNamesFr = [
+            1 => 'Janvier', 2 => 'Février', 3 => 'Mars', 4 => 'Avril',
+            5 => 'Mai', 6 => 'Juin', 7 => 'Juillet', 8 => 'Août',
+            9 => 'Septembre', 10 => 'Octobre', 11 => 'Novembre', 12 => 'Décembre',
+        ];
+
+        $delegateObjective = \App\Models\DelegateObjective::where('year', $currentYear)
+            ->where('month', $currentMonth)
+            ->first();
+
+        $monthStartDate = now()->startOfMonth();
+        $monthEndDate = now()->endOfMonth();
+
+        $monthlyOrders = Order::whereBetween('created_at', [$monthStartDate, $monthEndDate])
+            ->whereNotIn('status', ['cancelled', 'rejected'])
+            ->with(['items.product'])
+            ->get();
+
+        $achievedMonthlyOrders = $monthlyOrders->count();
+        $achievedMonthlyRevenue = 0.0;
+
+        foreach ($monthlyOrders as $ord) {
+            if ($ord->items->isNotEmpty()) {
+                foreach ($ord->items as $item) {
+                    $nominalPrice = (float) ($item->product?->nominal_price ?? $item->unit_price);
+                    $qty = (int) ($item->quantity ?? 1);
+                    $achievedMonthlyRevenue += ($nominalPrice * $qty);
+                }
+            } else {
+                $achievedMonthlyRevenue += (float) $ord->total_amount;
+            }
+        }
+
+        $targetRevenue = $delegateObjective ? (float) $delegateObjective->target_revenue : 2500000.0;
+        $targetOrders = $delegateObjective ? (int) $delegateObjective->target_orders : 40;
+
+        $revenuePercentage = $targetRevenue > 0
+            ? round(($achievedMonthlyRevenue / $targetRevenue) * 100, 1)
+            : ($achievedMonthlyRevenue > 0 ? 100.0 : 0.0);
+
+        $objectivePayload = [
+            'monthName' => ($monthNamesFr[$currentMonth] ?? "Mois $currentMonth") . " $currentYear",
+            'targetRevenue' => $targetRevenue,
+            'achievedRevenue' => round($achievedMonthlyRevenue, 2),
+            'remainingRevenue' => max(0, round($targetRevenue - $achievedMonthlyRevenue, 2)),
+            'revenuePercentage' => $revenuePercentage,
+            'targetOrders' => $targetOrders,
+            'achievedOrders' => $achievedMonthlyOrders,
+            'isConfigured' => ($delegateObjective !== null),
+        ];
+
         return response()->json([
             'totalOrders' => $totalOrders,
             'pendingOrders' => $pendingOrders,
@@ -167,6 +227,7 @@ class OrderController extends Controller
             'balance' => $balance,
             'monthlyOrdersCount' => $monthlyOrdersCount,
             'productsOrdered' => $productsOrdered,
+            'objective' => $objectivePayload,
             'ordersGrowth' => $ordersGrowth,
             'revenueGrowth' => $revenueGrowth,
             'pendingGrowth' => $pendingGrowth,
@@ -185,13 +246,61 @@ class OrderController extends Controller
      */
     public function show($id)
     {
-        $order = Order::with('items')->find($id);
+        $order = Order::with(['items.product', 'client', 'delegate', 'validationLogs'])
+            ->where('id', $id)
+            ->orWhere('order_code', $id)
+            ->first();
 
         if (!$order) {
             return response()->json(['message' => 'Order not found'], 404);
         }
 
-        return response()->json(['data' => $order]);
+        // Auto-synthesize past validation log for existing orders with validation history
+        if ($order->validationLogs->isEmpty() && ($order->status === 'partially_validated' || $order->status === 'validated')) {
+            $totalValQty = 0;
+            $totalValAmt = 0;
+            $itemsPayload = [];
+            foreach ($order->items as $item) {
+                $vQty = $item->validated_quantity ?? ($order->status === 'validated' ? $item->quantity : 0);
+                if ($vQty > 0) {
+                    $totalValQty += $vQty;
+                    $sub = $vQty * $item->unit_price;
+                    $totalValAmt += $sub;
+                    $itemsPayload[] = [
+                        'item_id' => $item->id,
+                        'product_name' => $item->product_name,
+                        'reference' => $item->reference,
+                        'quantity_validated' => $vQty,
+                        'cumulative_quantity' => $vQty,
+                        'ordered_quantity' => $item->quantity,
+                        'remaining_quantity' => max(0, $item->quantity - $vQty),
+                        'unit_price' => $item->unit_price,
+                        'subtotal' => $sub,
+                    ];
+                }
+            }
+            if ($totalValQty > 0) {
+                try {
+                    OrderValidationLog::create([
+                        'order_id' => $order->id,
+                        'batch_number' => 1,
+                        'status' => $order->status,
+                        'validated_by' => $order->delegate_name ?: 'Délégué Commercial',
+                        'total_quantity' => $totalValQty,
+                        'total_amount' => $totalValAmt,
+                        'items_payload' => $itemsPayload,
+                        'notes' => 'Validation initiale enregistrée',
+                        'created_at' => $order->updated_at ?: $order->created_at,
+                        'updated_at' => $order->updated_at ?: $order->created_at,
+                    ]);
+                    $order->load('validationLogs');
+                } catch (\Throwable $e) {
+                    // Ignore duplicate race conditions
+                }
+            }
+        }
+
+        return response()->json(['data' => $this->enrichOrderWithCategoryWorkflow($order)]);
     }
 
     /**
@@ -359,7 +468,7 @@ class OrderController extends Controller
 
             return response()->json([
                 'message' => 'Commande créée avec succès',
-                'data' => $order->load('items'),
+                'data' => $this->enrichOrderWithCategoryWorkflow($order->load(['items.product'])),
             ], 201);
 
         } catch (\Exception $e) {
@@ -395,20 +504,61 @@ class OrderController extends Controller
             if ($request->has('validated_items')) {
                 $validatedItems = $request->input('validated_items');
                 $totalAmount = 0;
+                $batchItems = [];
+                $batchQty = 0;
+                $batchAmount = 0;
 
                 foreach ($order->items as $item) {
                     $matchingVal = collect($validatedItems)->firstWhere('id', $item->id);
                     if ($matchingVal) {
-                        $valQty = (int) $matchingVal['quantity'];
-                        $item->validated_quantity = $valQty;
-                        $item->subtotal = $valQty * $item->unit_price;
+                        $oldValQty = (int) ($item->validated_quantity ?? 0);
+                        $newValQty = (int) $matchingVal['quantity'];
+                        $delta = max(0, $newValQty - $oldValQty);
+
+                        $item->validated_quantity = $newValQty;
+                        $item->subtotal = $newValQty * $item->unit_price;
                         $item->save();
+
+                        $qtyAdded = $delta > 0 ? $delta : ($oldValQty === 0 && $newValQty > 0 ? $newValQty : 0);
+                        if ($qtyAdded > 0) {
+                            $batchQty += $qtyAdded;
+                            $subtotalForLog = $qtyAdded * $item->unit_price;
+                            $batchAmount += $subtotalForLog;
+                            $batchItems[] = [
+                                'item_id' => $item->id,
+                                'product_name' => $item->product_name,
+                                'reference' => $item->reference,
+                                'quantity_validated' => $qtyAdded,
+                                'cumulative_quantity' => $newValQty,
+                                'ordered_quantity' => $item->quantity,
+                                'remaining_quantity' => max(0, $item->quantity - $newValQty),
+                                'unit_price' => $item->unit_price,
+                                'subtotal' => $subtotalForLog,
+                            ];
+                        }
                     }
                     $effectiveQty = $item->validated_quantity ?? $item->quantity;
                     $totalAmount += $effectiveQty * $item->unit_price;
                 }
 
                 $order->total_amount = $totalAmount;
+
+                if (!empty($batchItems)) {
+                    $batchNumber = $order->validationLogs()->count() + 1;
+                    $user = $request->user();
+                    $validatorName = $user ? $user->name : ($order->delegate_name ?: 'Délégué Commercial');
+
+                    OrderValidationLog::create([
+                        'order_id' => $order->id,
+                        'batch_number' => $batchNumber,
+                        'status' => $request->input('status', 'partially_validated'),
+                        'validated_by' => $validatorName,
+                        'total_quantity' => $batchQty,
+                        'total_amount' => $batchAmount,
+                        'items_payload' => $batchItems,
+                        'notes' => $request->input('notes') ?: "Tranche #{$batchNumber} validée ({$batchQty} unités)",
+                    ]);
+                }
             }
 
             if ($request->has('status')) {
@@ -424,7 +574,7 @@ class OrderController extends Controller
 
             return response()->json([
                 'message' => 'Commande mise à jour avec succès',
-                'data' => $order->load('items'),
+                'data' => $this->enrichOrderWithCategoryWorkflow($order->load(['items.product', 'validationLogs'])),
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
@@ -465,5 +615,62 @@ class OrderController extends Controller
             'Access-Control-Allow-Origin' => '*',
             'Cache-Control' => 'no-cache, no-store, must-revalidate',
         ]);
+    }
+
+    /**
+     * Helper to compute category-based workflow metadata for an order.
+     */
+    private function enrichOrderWithCategoryWorkflow(Order $order): Order
+    {
+        $categoriesMap = Category::all()->keyBy('slug');
+        $hasVirtual = false;
+        $hasPhysical = false;
+        $categoriesList = [];
+
+        foreach ($order->items as $item) {
+            $catSlug = $item->product?->category ?? 'general';
+            $categoryRecord = $categoriesMap->get($catSlug);
+
+            $isVirtual = false;
+            if ($categoryRecord) {
+                $isVirtual = ($categoryRecord->workflow_type === 'virtual') || !$categoryRecord->requires_delivery;
+            } else {
+                $lowerCat = strtolower($catSlug);
+                $lowerName = strtolower($item->product_name);
+                $isVirtual = str_contains($lowerCat, 'credit') 
+                    || str_contains($lowerCat, 'recharge')
+                    || str_contains($lowerName, 'recharge')
+                    || str_contains($lowerName, 'credit');
+            }
+
+            $item->category = $catSlug;
+            $item->category_name = $categoryRecord?->name ?? ucfirst(str_replace('_', ' ', $catSlug));
+            $item->is_virtual = $isVirtual;
+
+            if ($isVirtual) {
+                $hasVirtual = true;
+            } else {
+                $hasPhysical = true;
+            }
+
+            if (!in_array($item->category_name, $categoriesList)) {
+                $categoriesList[] = $item->category_name;
+            }
+        }
+
+        $workflowType = 'physical';
+        if ($hasVirtual && !$hasPhysical) {
+            $workflowType = 'virtual';
+        } elseif ($hasVirtual && $hasPhysical) {
+            $workflowType = 'mixed';
+        }
+
+        $order->has_virtual_items = $hasVirtual;
+        $order->has_physical_items = $hasPhysical;
+        $order->workflow_type = $workflowType;
+        $order->requires_delivery = $hasPhysical;
+        $order->categories = $categoriesList;
+
+        return $order;
     }
 }

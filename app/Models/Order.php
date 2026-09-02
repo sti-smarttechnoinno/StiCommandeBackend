@@ -42,4 +42,9 @@ class Order extends Model
     {
         return $this->belongsTo(User::class, 'delegate_id');
     }
+
+    public function validationLogs()
+    {
+        return $this->hasMany(OrderValidationLog::class, 'order_id')->orderBy('created_at', 'desc');
+    }
 }

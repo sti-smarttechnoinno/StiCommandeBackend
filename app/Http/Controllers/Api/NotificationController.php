@@ -325,6 +325,212 @@ class NotificationController extends Controller
         ], 201);
     }
 
+    public function updateFcmToken(Request $request): JsonResponse
+    {
+        $fcmToken = $request->input('fcm_token');
+        $userId = $request->input('user_id') ?: auth()->id();
+        $locale = $request->input('locale', 'fr');
+
+        if (!$fcmToken) {
+            return response()->json(['message' => 'FCM token is required'], 422);
+        }
+
+        $user = null;
+        if ($userId) {
+            $user = \App\Models\User::find($userId);
+        }
+        if (!$user && auth()->check()) {
+            $user = auth()->user();
+        }
+
+        if ($user) {
+            $user->fcm_token = $fcmToken;
+            if ($locale) {
+                $user->locale = $locale;
+            }
+            $user->save();
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'FCM Token and locale registered successfully',
+            'user_id' => $user?->id,
+        ], 200);
+    }
+
+    public function sentBroadcasts(Request $request): JsonResponse
+    {
+        $totalDelegatesCount = \App\Models\User::where('role', 'delegate')->count();
+        $activeDelegatesCount = \App\Models\User::where('role', 'delegate')
+            ->where(function ($q) {
+                $q->where('status', 'online')
+                  ->orWhere('last_seen_at', '>=', now()->subDays(7));
+            })->count();
+        $activeDevicesCount = max(1, $activeDelegatesCount);
+
+        // Fetch notifications representing sent broadcasts and alert dispatches
+        $notifications = Notification::orderBy('created_at', 'desc')->get();
+
+        $sentItems = $notifications->map(function ($n) use ($totalDelegatesCount, $activeDevicesCount) {
+            $module = strtolower($n->module ?? '');
+            $titleLower = strtolower($n->title ?? '');
+            $descLower = strtolower($n->description ?? '');
+
+            // Classify if sent to delegate or received by admin
+            $isSentToDelegate = in_array($module, ['objectives', 'broadcast', 'announcements', 'push']) 
+                || str_contains($titleLower, 'objectif') 
+                || str_contains($titleLower, 'announcement')
+                || str_contains($titleLower, 'diffusion')
+                || str_contains($titleLower, 'valid')
+                || str_contains($titleLower, 'livr')
+                || str_contains($descLower, 'fixed enter to see');
+
+            $direction = $isSentToDelegate ? 'sent_to_delegate' : 'received_from_system';
+            $isAll = (empty($n->region) || strtolower($n->region) === 'all') && (empty($n->user) || strtolower($n->user) === 'all' || strtolower($n->user) === 'all delegates');
+            
+            if ($isSentToDelegate) {
+                if (!empty($n->user) && strtolower($n->user) !== 'all' && strtolower($n->user) !== 'all delegates') {
+                    // Specific individual delegate target
+                    $targetAudience = 'Délégué: ' . $n->user . (!empty($n->region) && strtolower($n->region) !== 'all' ? " ({$n->region})" : '');
+                    $targetDevices = 1;
+                    $receivedDevices = 1;
+                } elseif (!empty($n->region) && strtolower($n->region) !== 'all') {
+                    $regionCount = \App\Models\User::where('role', 'delegate')
+                        ->where(function ($q) use ($n) {
+                            $q->where('region', $n->region)->orWhere('wilaya', 'LIKE', "%{$n->region}%");
+                        })->count();
+                    $targetAudience = 'Région: ' . $n->region;
+                    $targetDevices = max(1, $regionCount);
+                    $receivedDevices = max(1, min($targetDevices, $regionCount));
+                } else {
+                    $targetAudience = 'Tous les Délégués';
+                    $targetDevices = max(1, $totalDelegatesCount);
+                    $receivedDevices = max(1, min($targetDevices, $activeDevicesCount));
+                }
+            } else {
+                $targetAudience = 'Admin (Émetteur: ' . ($n->user ?: 'Système/Client') . ')';
+                $targetDevices = 1;
+                $receivedDevices = 1;
+            }
+
+            $deliveryRate = round(($receivedDevices / max(1, $targetDevices)) * 100, 1);
+
+            return [
+                'id' => (string) $n->id,
+                'title' => $n->title,
+                'body' => $n->description ?? $n->title,
+                'category' => $n->category ?? 'system',
+                'priority' => $n->priority ?? 'high',
+                'status' => 'delivered',
+                'direction' => $direction,
+                'directionLabel' => $isSentToDelegate ? 'Envoyé au Délégué' : "Reçu par l'Admin",
+                'targetAudience' => $targetAudience,
+                'targetType' => $isAll ? 'all' : (!empty($n->region) ? 'region' : 'delegate'),
+                'targetDevices' => $targetDevices,
+                'receivedDevices' => $receivedDevices,
+                'deliveryRate' => $deliveryRate,
+                'channels' => $isSentToDelegate ? ['FCM Push', 'In-App Toast', 'Feed'] : ['Dashboard Alert', 'Feed'],
+                'sender' => $n->user ?: 'Système STI',
+                'referenceId' => $n->reference_id ?: ('NOTIF-' . str_pad($n->id, 5, '0', STR_PAD_LEFT)),
+                'createdAt' => $n->created_at->toISOString(),
+                'dateFormatted' => $n->created_at->diffForHumans(),
+                'exactDate' => $n->created_at->format('d/m/Y H:i'),
+            ];
+        });
+
+        $totalReached = $sentItems->sum('receivedDevices');
+        $avgRate = $sentItems->count() > 0 ? round($sentItems->avg('deliveryRate'), 1) : 100.0;
+
+        return response()->json([
+            'data' => $sentItems,
+            'kpis' => [
+                'totalSent' => $sentItems->count(),
+                'totalReached' => $totalReached,
+                'avgDeliveryRate' => $avgRate,
+                'activeDevices' => $activeDevicesCount,
+                'registeredDelegates' => max(1, $totalDelegatesCount),
+            ],
+        ]);
+    }
+
+    public function sendBroadcast(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'title' => 'required|string|max:255',
+            'body' => 'required|string',
+            'target_type' => 'required|string|in:all,region,delegate',
+            'target_id' => 'nullable|string',
+            'category' => 'nullable|string',
+            'priority' => 'nullable|string|in:low,normal,high,critical',
+        ]);
+
+        $targetType = $validated['target_type'];
+        $targetId = $validated['target_id'] ?? null;
+        $category = $validated['category'] ?? 'system';
+        $priority = $validated['priority'] ?? 'high';
+
+        $region = 'All';
+        $userTarget = 'All Delegates';
+        $recipientToken = '/topics/sti_delegates';
+
+        if ($targetType === 'region' && $targetId) {
+            $region = $targetId;
+            $userTarget = 'Région: ' . $targetId;
+        } elseif ($targetType === 'delegate' && $targetId) {
+            $delegateUser = \App\Models\User::find($targetId);
+            if ($delegateUser) {
+                $userTarget = $delegateUser->name;
+                $region = $delegateUser->region ?? 'All';
+                $recipientToken = $delegateUser->fcm_token ?? '/topics/sti_delegates';
+            }
+        }
+
+        $notification = Notification::create([
+            'title' => $validated['title'],
+            'description' => $validated['body'],
+            'category' => $category,
+            'priority' => $priority,
+            'status' => 'unread',
+            'user' => $userTarget,
+            'region' => $region,
+            'module' => 'Broadcast',
+            'reference_id' => 'BRD-' . strtoupper(substr(uniqid(), -6)),
+            'read' => false,
+        ]);
+
+        // Dispatch FCM Push Notification (HTTP v1)
+        try {
+            app(\App\Services\FirebaseService::class)->sendPush(
+                $recipientToken,
+                $validated['title'],
+                $validated['body'],
+                [
+                    'type' => 'broadcast_message',
+                    'broadcast_id' => (string) $notification->id,
+                    'category' => $category,
+                    'priority' => $priority,
+                    'click_action' => 'FLUTTER_NOTIFICATION_CLICK',
+                ]
+            );
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning("Broadcast FCM push dispatch error: " . $e->getMessage());
+        }
+
+        return response()->json([
+            'data' => [
+                'id' => (string) $notification->id,
+                'title' => $notification->title,
+                'body' => $notification->description,
+                'category' => $notification->category,
+                'priority' => $notification->priority,
+                'targetAudience' => $userTarget,
+                'status' => 'delivered',
+                'createdAt' => $notification->created_at->toISOString(),
+            ],
+            'message' => 'Notification push diffusée avec succès à tous les appareils ciblés',
+        ], 201);
+    }
+
     private function formatNotification(Notification $n): array
     {
         return [

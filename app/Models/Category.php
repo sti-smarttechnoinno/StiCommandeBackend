@@ -14,10 +14,13 @@ class Category extends Model
         'slug',
         'icon',
         'description',
+        'workflow_type',
+        'requires_delivery',
         'is_active',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
+        'requires_delivery' => 'boolean',
     ];
 }

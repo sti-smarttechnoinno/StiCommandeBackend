@@ -26,8 +26,8 @@ class ClientObjectiveController extends Controller
             ->orderBy('month', 'desc')
             ->get();
 
-        $hasCurrentMonth = $objectives->contains(function ($obj) use ($currentYear, $currentMonth) {
-            return $obj->year === $currentYear && $obj->month === $currentMonth;
+        $objectivesByPeriod = $objectives->keyBy(function ($obj) {
+            return "{$obj->year}-{$obj->month}";
         });
 
         $monthNamesFr = [
@@ -36,19 +36,68 @@ class ClientObjectiveController extends Controller
             9 => 'Septembre', 10 => 'Octobre', 11 => 'Novembre', 12 => 'Décembre',
         ];
 
+        // Gather all relevant periods
+        $orderDates = Order::where(function ($q) use ($client) {
+            $q->where('client_id', $client->id)
+              ->orWhere('client_name', $client->name);
+        })
+        ->where('status', '!=', 'cancelled')
+        ->pluck('created_at');
+
+        $periods = collect();
+
+        // Always include current month
+        $periods->put("{$currentYear}-{$currentMonth}", [
+            'year' => $currentYear,
+            'month' => $currentMonth,
+        ]);
+
+        foreach ($objectives as $obj) {
+            $periods->put("{$obj->year}-{$obj->month}", [
+                'year' => (int) $obj->year,
+                'month' => (int) $obj->month,
+            ]);
+        }
+
+        foreach ($orderDates as $date) {
+            if ($date) {
+                $cDate = Carbon::parse($date);
+                $y = (int) $cDate->year;
+                $m = (int) $cDate->month;
+                $periods->put("{$y}-{$m}", [
+                    'year' => $y,
+                    'month' => $m,
+                ]);
+            }
+        }
+
         $computeMonthStats = function (int $year, int $month, ?ClientObjective $obj) use ($client, $currentYear, $currentMonth, $monthNamesFr) {
             $startDate = Carbon::createFromDate($year, $month, 1)->startOfMonth();
             $endDate = Carbon::createFromDate($year, $month, 1)->endOfMonth();
 
-            $ordersQuery = Order::where(function ($q) use ($client) {
+            $orders = Order::where(function ($q) use ($client) {
                 $q->where('client_id', $client->id)
                   ->orWhere('client_name', $client->name);
             })
             ->whereBetween('created_at', [$startDate, $endDate])
-            ->where('status', '!=', 'cancelled');
+            ->where('status', '!=', 'cancelled')
+            ->with(['items.product'])
+            ->get();
 
-            $achievedRevenue = (float) (clone $ordersQuery)->sum('total_amount');
-            $achievedOrders = (int) (clone $ordersQuery)->count();
+            $achievedOrders = $orders->count();
+            $achievedRevenue = 0.0;
+
+            foreach ($orders as $order) {
+                if ($order->items->isNotEmpty()) {
+                    foreach ($order->items as $item) {
+                        $nominalPrice = (float) ($item->product?->nominal_price ?? $item->unit_price);
+                        $qty = (int) ($item->quantity ?? 1);
+                        $achievedRevenue += ($nominalPrice * $qty);
+                    }
+                } else {
+                    $achievedRevenue += (float) $order->total_amount;
+                }
+            }
 
             $targetRevenue = $obj ? (float) $obj->target_revenue : 0.0;
             $targetOrders = $obj ? (int) $obj->target_orders : 0;
@@ -83,8 +132,8 @@ class ClientObjectiveController extends Controller
                 'month' => $month,
                 'monthName' => ($monthNamesFr[$month] ?? "Mois $month") . " $year",
                 'targetRevenue' => $targetRevenue,
-                'achievedRevenue' => $achievedRevenue,
-                'remainingRevenue' => max(0, $targetRevenue - $achievedRevenue),
+                'achievedRevenue' => round($achievedRevenue, 2),
+                'remainingRevenue' => max(0, round($targetRevenue - $achievedRevenue, 2)),
                 'revenuePercentage' => $revenuePercentage,
                 'targetOrders' => $targetOrders,
                 'achievedOrders' => $achievedOrders,
@@ -99,14 +148,10 @@ class ClientObjectiveController extends Controller
         $archive = [];
         $currentMonthData = null;
 
-        if (!$hasCurrentMonth) {
-            $currentMonthData = $computeMonthStats($currentYear, $currentMonth, null);
-            $archive[] = $currentMonthData;
-        }
-
-        foreach ($objectives as $obj) {
-            $stats = $computeMonthStats($obj->year, $obj->month, $obj);
-            if ($obj->year === $currentYear && $obj->month === $currentMonth) {
+        foreach ($periods as $key => $p) {
+            $obj = $objectivesByPeriod->get($key);
+            $stats = $computeMonthStats($p['year'], $p['month'], $obj);
+            if ($p['year'] === $currentYear && $p['month'] === $currentMonth) {
                 $currentMonthData = $stats;
             }
             $archive[] = $stats;
@@ -124,7 +169,7 @@ class ClientObjectiveController extends Controller
             'clientName' => $client->name,
             'currentMonth' => $currentMonthData ?? $computeMonthStats($currentYear, $currentMonth, null),
             'archive' => $archive,
-            'totalObjectivesCount' => count($objectives),
+            'totalObjectivesCount' => count($archive),
         ]);
     }
 

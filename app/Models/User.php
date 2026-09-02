@@ -26,7 +26,7 @@ use Laravel\Sanctum\HasApiTokens;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
-#[Fillable(['employee_id', 'name', 'username', 'email', 'phone', 'password', 'role', 'is_active', 'region', 'wilaya', 'department', 'status', 'two_factor_enabled', 'last_login_at', 'last_seen_at'])]
+#[Fillable(['employee_id', 'name', 'username', 'email', 'phone', 'password', 'role', 'is_active', 'region', 'wilaya', 'department', 'status', 'two_factor_enabled', 'fcm_token', 'locale', 'last_login_at', 'last_seen_at'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {

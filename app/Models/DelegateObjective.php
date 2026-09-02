@@ -16,6 +16,8 @@ class DelegateObjective extends Model
         'month',
         'target_revenue',
         'target_orders',
+        'achieved_revenue',
+        'achieved_orders',
         'notes',
     ];
 
@@ -24,6 +26,8 @@ class DelegateObjective extends Model
         'month' => 'integer',
         'target_revenue' => 'float',
         'target_orders' => 'integer',
+        'achieved_revenue' => 'float',
+        'achieved_orders' => 'integer',
     ];
 
     public function user(): BelongsTo
