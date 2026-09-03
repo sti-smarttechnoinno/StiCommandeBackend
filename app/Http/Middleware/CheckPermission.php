@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 namespace App\Http\Middleware;
 
@@ -28,7 +28,6 @@ class CheckPermission
             return response()->json([
                 'message' => "Accès non autorisé : votre rôle [{$user->role}] ne dispose pas de la permission [{$permission}].",
                 'required_permission' => $permission,
-                'user_role' => $user->role,
             ], 403);
         }
 

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Client;
 use App\Models\User;
 use App\Models\Order;
+use App\Models\Region;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -56,20 +57,26 @@ class ClientController extends Controller
         }
 
         if ($statuses = $request->input('status')) {
+            $statuses = is_array($statuses) ? $statuses : explode(',', (string) $statuses);
             $query->whereIn('status', $statuses);
         }
 
         if ($regions = $request->input('region')) {
+            $regions = is_array($regions) ? $regions : explode(',', (string) $regions);
             $query->whereIn('region', $regions);
         }
 
         if ($delegates = $request->input('delegate')) {
-            $query->whereHas('delegate', function ($q) use ($delegates) {
-                $q->whereIn('name', $delegates);
+            $delegates = is_array($delegates) ? $delegates : explode(',', (string) $delegates);
+            $query->where(function ($q) use ($delegates) {
+                $q->whereHas('delegate', function ($sub) use ($delegates) {
+                    $sub->whereIn('name', $delegates);
+                })->orWhereIn('delegate_name', $delegates);
             });
         }
 
         if ($types = $request->input('clientType')) {
+            $types = is_array($types) ? $types : explode(',', (string) $types);
             $query->whereIn('client_type', $types);
         }
 
@@ -81,7 +88,15 @@ class ClientController extends Controller
             $query->where('created_at', '<=', Carbon::parse($endDate)->endOfDay());
         }
 
-        $sortField = $request->input('sortField', 'created_at');
+        $sortFieldRaw = $request->input('sortField', 'created_at');
+        $sortFieldMap = [
+            'clientCode' => 'client_code',
+            'totalOrders' => 'total_orders',
+            'totalSpent' => 'total_spent',
+            'createdAt' => 'created_at',
+            'delegateName' => 'region',
+        ];
+        $sortField = $sortFieldMap[$sortFieldRaw] ?? $sortFieldRaw;
         $sortDirection = $request->input('sortDirection', 'desc');
         $allowedSorts = ['name', 'client_code', 'phone', 'region', 'total_orders', 'total_spent', 'status', 'created_at'];
         if (! in_array($sortField, $allowedSorts)) {
@@ -322,18 +337,29 @@ class ClientController extends Controller
             $totalRevenueSparkline[] = round($dayRev, 2);
         }
 
+        $currentYear = (int) now()->year;
+        $currentMonth = (int) now()->month;
+        $totalTargetRevenue = (float) \App\Models\ClientObjective::where('year', $currentYear)
+            ->where('month', $currentMonth)
+            ->sum('target_revenue');
+        if ($totalTargetRevenue <= 0) {
+            $totalTargetRevenue = round((float) Client::sum('total_spent') * 1.2, 2);
+        }
+
         return response()->json([
             'totalClients' => $totalClients,
             'activeClients' => $activeClients,
             'inactiveClients' => $inactiveClients,
-            'outstandingCredit' => $outstandingCredit,
+            'outstandingCredit' => 0,
+            'targetRevenue' => $totalTargetRevenue,
             'ordersThisMonth' => $ordersThisMonth,
             'totalRevenue' => $totalRevenue,
             'trends' => [
                 'totalClients' => $this->trend($totalClients, $prevTotalClients),
                 'activeClients' => $this->trend($activeClients, $prevActiveClients),
                 'inactiveClients' => $this->trend($inactiveClients, $prevInactiveClients),
-                'outstandingCredit' => $this->trend($outstandingCredit, $prevOutstanding),
+                'outstandingCredit' => 0.0,
+                'targetRevenue' => 0.0,
                 'ordersThisMonth' => $this->trend($ordersThisMonth, $prevOrders),
                 'totalRevenue' => $this->trend($totalRevenue, $prevRevenue),
             ],
@@ -341,7 +367,8 @@ class ClientController extends Controller
                 'totalClients' => $totalClientsSparkline,
                 'activeClients' => $activeClientsSparkline,
                 'inactiveClients' => $inactiveClientsSparkline,
-                'outstandingCredit' => $outstandingCreditSparkline,
+                'outstandingCredit' => [0, 0, 0, 0, 0, 0, 0],
+                'targetRevenue' => array_fill(0, 7, round($totalTargetRevenue, 2)),
                 'ordersThisMonth' => $ordersThisMonthSparkline,
                 'totalRevenue' => $totalRevenueSparkline,
             ],
@@ -355,11 +382,52 @@ class ClientController extends Controller
             ->orderByDesc('value')
             ->get();
 
-        $creditUsage = Client::where('credit_limit', '>', 0)
-            ->select('name', 'credit_limit as limit', 'outstanding_balance as used')
-            ->orderByDesc('credit_limit')
-            ->limit(4)
-            ->get();
+        $currentYear = (int) now()->year;
+        $currentMonth = (int) now()->month;
+
+        $objectivePerformance = Client::whereHas('objectives', function ($q) use ($currentYear, $currentMonth) {
+            $q->where('year', $currentYear)->where('month', $currentMonth)->where('target_revenue', '>', 0);
+        })
+            ->with(['objectives' => function ($q) use ($currentYear, $currentMonth) {
+                $q->where('year', $currentYear)->where('month', $currentMonth);
+            }])
+            ->limit(5)
+            ->get()
+            ->map(function ($c) {
+                $obj = $c->objectives->first();
+                $target = (float) ($obj->target_revenue ?? 0);
+                $achieved = (float) Order::where('client_id', $c->id)
+                    ->whereBetween('created_at', [now()->startOfMonth(), now()->endOfMonth()])
+                    ->whereNotIn('status', ['cancelled', 'rejected'])
+                    ->sum('total_amount');
+                $percent = $target > 0 ? round(($achieved / $target) * 100, 1) : 0;
+                return [
+                    'name' => $c->name,
+                    'target' => $target,
+                    'achieved' => $achieved,
+                    'percent' => $percent,
+                ];
+            });
+
+        if ($objectivePerformance->isEmpty()) {
+            $objectivePerformance = Client::select('clients.name', DB::raw('COALESCE(SUM(orders.total_amount), clients.total_spent) as achieved'))
+                ->leftJoin('orders', 'clients.id', '=', 'orders.client_id')
+                ->groupBy('clients.id', 'clients.name', 'clients.total_spent')
+                ->orderByDesc('achieved')
+                ->limit(4)
+                ->get()
+                ->map(function ($c) {
+                    $achieved = (float) $c->achieved;
+                    $target = max(100000, round($achieved * 1.25, -3));
+                    $percent = $target > 0 ? round(($achieved / $target) * 100, 1) : 0;
+                    return [
+                        'name' => $c->name,
+                        'target' => $target,
+                        'achieved' => $achieved,
+                        'percent' => $percent,
+                    ];
+                });
+        }
 
         $topDelegates = User::where('role', 'delegate')
             ->select(
@@ -391,7 +459,8 @@ class ClientController extends Controller
 
         return response()->json([
             'regionalDistribution' => $regionalDistribution,
-            'creditUsage' => $creditUsage,
+            'objectivePerformance' => $objectivePerformance,
+            'creditUsage' => [],
             'topDelegates' => $topDelegates,
         ]);
     }
@@ -522,6 +591,56 @@ class ClientController extends Controller
 
         $count = Client::count();
         return 'CLI-2026-' . str_pad((string) ($count + 1), 6, '0', STR_PAD_LEFT);
+    }
+
+    public function filterOptions(Request $request): JsonResponse
+    {
+        // Get distinct regions from Client records and Region model
+        $clientRegions = Client::whereNotNull('region')
+            ->where('region', '!=', '')
+            ->distinct()
+            ->pluck('region')
+            ->toArray();
+        $modelRegions = Region::whereNotNull('name')
+            ->where('name', '!=', '')
+            ->distinct()
+            ->pluck('name')
+            ->toArray();
+        $regions = array_values(array_unique(array_filter(array_merge($clientRegions, $modelRegions))));
+        sort($regions, SORT_NATURAL | SORT_FLAG_CASE);
+
+        // Get distinct delegates from users with role 'delegate' and from assigned client delegates
+        $delegateUsers = User::where('role', 'delegate')
+            ->whereNotNull('name')
+            ->where('name', '!=', '')
+            ->pluck('name')
+            ->toArray();
+        $assignedDelegates = User::whereIn('id', Client::whereNotNull('delegate_id')->pluck('delegate_id'))
+            ->whereNotNull('name')
+            ->where('name', '!=', '')
+            ->pluck('name')
+            ->toArray();
+        $delegates = array_values(array_unique(array_filter(array_merge($delegateUsers, $assignedDelegates))));
+        sort($delegates, SORT_NATURAL | SORT_FLAG_CASE);
+
+        // Client Types
+        $clientTypes = Client::whereNotNull('client_type')
+            ->where('client_type', '!=', '')
+            ->distinct()
+            ->pluck('client_type')
+            ->toArray();
+        $defaultTypes = ['retail', 'wholesale', 'corporate', 'government'];
+        $types = array_values(array_unique(array_merge($defaultTypes, $clientTypes)));
+
+        // Statuses
+        $statuses = ['active', 'inactive', 'pending', 'blocked'];
+
+        return response()->json([
+            'regions' => $regions,
+            'delegates' => $delegates,
+            'clientTypes' => $types,
+            'statuses' => $statuses,
+        ]);
     }
 
     private function trend(float $current, float $previous): float

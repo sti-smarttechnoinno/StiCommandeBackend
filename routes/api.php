@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\DelegateObjectiveController;
 use App\Http\Controllers\Api\ClientObjectiveController;
+use App\Http\Controllers\Api\StockController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/auth/login', [AuthController::class, 'login']);
@@ -72,11 +73,18 @@ Route::get('/operators', [OperatorController::class, 'index']);
 Route::get('/categories', [CategoryController::class, 'index']);
 
 // Orders public access / fallback
+Route::get('/clients/filter-options', [ClientController::class, 'filterOptions']);
 Route::get('/orders/kpis', [OrderController::class, 'kpis']);
 Route::get('/orders/stream', [OrderController::class, 'stream']);
 Route::get('/orders', [OrderController::class, 'index']);
 Route::get('/orders/{id}', [OrderController::class, 'show']);
 Route::post('/orders', [OrderController::class, 'store']);
+// Stock public access / fallback
+Route::get('/stock/kpis', [StockController::class, 'kpis']);
+Route::get('/stock/analytics', [StockController::class, 'analytics']);
+Route::get('/stock/filter-options', [StockController::class, 'filterOptions']);
+Route::get('/stock/movements', [StockController::class, 'index']);
+Route::post('/stock/movements', [StockController::class, 'store']);
 
 // Heartbeat & offline presence routes (Public & Auth)
 Route::post('/delegates/heartbeat', [DelegateController::class, 'heartbeat']);
@@ -87,6 +95,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/auth/me', [AuthController::class, 'me']);
     Route::put('/auth/profile', [AuthController::class, 'profile']);
 
+    Route::get('/stock/kpis', [StockController::class, 'kpis']);
+    Route::get('/stock/analytics', [StockController::class, 'analytics']);
+    Route::get('/stock/filter-options', [StockController::class, 'filterOptions']);
+    Route::get('/stock/movements', [StockController::class, 'index']);
+    Route::post('/stock/movements', [StockController::class, 'store']);
+
+    Route::get('/clients/filter-options', [ClientController::class, 'filterOptions']);
     Route::get('/clients/kpis', [ClientController::class, 'kpis']);
     Route::get('/clients/analytics', [ClientController::class, 'analytics']);
     Route::post('/clients/bulk', [ClientController::class, 'bulkAction']);

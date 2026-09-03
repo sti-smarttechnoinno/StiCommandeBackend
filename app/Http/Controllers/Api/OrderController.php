@@ -538,6 +538,17 @@ class OrderController extends Controller
         $request->validate([
             'status' => 'nullable|string|in:pending,validated,partially_validated,processing,delivered,cancelled',
             'notes' => 'nullable|string',
+            'client_id' => 'nullable|string',
+            'client_name' => 'nullable|string',
+            'delivery_address' => 'nullable|string',
+            'payment_method' => 'nullable|string',
+            'priority' => 'nullable|string|in:low,normal,high,urgent',
+            'items' => 'nullable|array',
+            'items.*.product_id' => 'nullable|string',
+            'items.*.product_name' => 'required_with:items|string',
+            'items.*.reference' => 'nullable|string',
+            'items.*.unit_price' => 'required_with:items|numeric|min:0',
+            'items.*.quantity' => 'required_with:items|integer|min:1',
             'validated_items' => 'nullable|array',
             'validated_items.*.id' => 'required_with:validated_items|string',
             'validated_items.*.quantity' => 'required_with:validated_items|integer|min:0',
@@ -545,6 +556,75 @@ class OrderController extends Controller
 
         DB::beginTransaction();
         try {
+            // Update client details if provided
+            if ($clientId = $request->input('client_id')) {
+                $client = Client::with('delegate')->find($clientId);
+                if ($client) {
+                    $order->client_id = $client->id;
+                    $order->client_name = $client->name;
+                    $order->wilaya = $client->wilaya ?? $order->wilaya;
+                    $order->region = $client->region ?? $order->region;
+                    if ($client->delegate_id) {
+                        $order->delegate_id = $client->delegate_id;
+                    }
+                    if ($client->delegate?->name || $client->delegate_name) {
+                        $order->delegate_name = $client->delegate?->name ?? $client->delegate_name;
+                    }
+                }
+            } elseif ($request->has('client_name') && !empty($request->input('client_name'))) {
+                $order->client_name = $request->input('client_name');
+            }
+
+            if ($request->has('delivery_address')) {
+                $order->delivery_address = $request->input('delivery_address');
+            }
+
+            if ($request->has('payment_method')) {
+                $order->payment_method = $request->input('payment_method');
+            }
+
+            if ($request->has('priority')) {
+                $order->priority = $request->input('priority');
+            }
+
+            if ($request->has('region')) {
+                $order->region = $request->input('region');
+            }
+
+            if ($request->has('wilaya')) {
+                $order->wilaya = $request->input('wilaya');
+            }
+
+            // Update full items list if provided
+            if ($request->has('items') && is_array($request->input('items')) && count($request->input('items')) > 0) {
+                $order->items()->delete();
+                $totalAmount = 0;
+                $orderItemsData = [];
+
+                foreach ($request->input('items') as $item) {
+                    $productId = $item['product_id'] ?? null;
+                    $productName = $item['product_name'] ?? 'Produit';
+                    $reference = $item['reference'] ?? null;
+                    $unitPrice = (float) ($item['unit_price'] ?? 0);
+                    $quantity = (int) ($item['quantity'] ?? 1);
+                    $subtotal = $unitPrice * $quantity;
+                    $totalAmount += $subtotal;
+
+                    $orderItemsData[] = [
+                        'product_id' => $productId,
+                        'product_name' => $productName,
+                        'reference' => $reference,
+                        'unit_price' => $unitPrice,
+                        'quantity' => $quantity,
+                        'subtotal' => $subtotal,
+                        'validated_quantity' => $item['validated_quantity'] ?? $quantity,
+                    ];
+                }
+
+                $order->items()->createMany($orderItemsData);
+                $order->total_amount = $totalAmount;
+            }
+
             if ($request->has('validated_items')) {
                 $validatedItems = $request->input('validated_items');
                 $totalAmount = 0;
@@ -616,14 +696,24 @@ class OrderController extends Controller
             $order->save();
             DB::commit();
 
+            // Broadcast real-time order update event to WebSocket Hub
+            try {
+                \Illuminate\Support\Facades\Http::timeout(2)->post('http://127.0.0.1:8085/broadcast', [
+                    'type' => 'ORDER_UPDATED',
+                    'order' => $order->fresh(['items.product']),
+                ]);
+            } catch (\Throwable $e) {
+                // Non-blocking broadcast fallback
+            }
+
             return response()->json([
                 'message' => 'Commande mise à jour avec succès',
-                'data' => $this->enrichOrderWithCategoryWorkflow($order->load(['items.product', 'validationLogs'])),
+                'data' => $this->enrichOrderWithCategoryWorkflow($order->fresh(['items.product', 'validationLogs'])),
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json([
-                'message' => 'Erreur lors de la validation de la commande.',
+                'message' => 'Erreur lors de la mise à jour de la commande.',
                 'error' => $e->getMessage(),
             ], 500);
         }
