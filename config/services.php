@@ -36,7 +36,7 @@ return [
     ],
 
     'fcm' => [
-        'key' => env('FCM_SERVER_KEY', 'AIzaSyDJiluGoF02bPPsNbxSju_dFhzbmH9tKpE'),
+        'key' => env('FCM_SERVER_KEY'),
     ],
 
 ];
