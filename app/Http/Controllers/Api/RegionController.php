@@ -11,6 +11,7 @@ use App\Models\Wilaya;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 
 class RegionController extends Controller
 {
@@ -192,9 +193,14 @@ class RegionController extends Controller
 
     public function store(Request $request): JsonResponse
     {
+        // Pre-compute slug code if code is not explicitly provided
+        if (! $request->filled('code') && $request->filled('name')) {
+            $request->merge(['code' => Str::slug($request->input('name'))]);
+        }
+
         $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'code' => 'nullable|string|max:100|unique:regions,code',
+            'name' => 'required|string|max:255|unique:regions,name',
+            'code' => 'required|string|max:100|unique:regions,code',
             'name_fr' => 'nullable|string|max:255',
             'subtitle' => 'nullable|string|max:255',
             'icon' => 'nullable|string|max:50',
@@ -205,11 +211,10 @@ class RegionController extends Controller
             'wilaya_codes.*' => 'string',
             'delegate_ids' => 'nullable|array',
             'delegate_ids.*' => 'string',
+        ], [
+            'name.unique' => 'Une région avec ce nom existe déjà.',
+            'code.unique' => 'Une région avec ce code existe déjà.',
         ]);
-
-        if (empty($validated['code'])) {
-            $validated['code'] = Str::slug($validated['name']);
-        }
 
         $region = Region::create($validated);
 
@@ -240,7 +245,8 @@ class RegionController extends Controller
     public function update(Request $request, Region $region): JsonResponse
     {
         $validated = $request->validate([
-            'name' => 'sometimes|required|string|max:255',
+            'name' => ['sometimes', 'required', 'string', 'max:255', Rule::unique('regions', 'name')->ignore($region->id)],
+            'code' => ['nullable', 'string', 'max:100', Rule::unique('regions', 'code')->ignore($region->id)],
             'name_fr' => 'nullable|string|max:255',
             'subtitle' => 'nullable|string|max:255',
             'icon' => 'nullable|string|max:50',
@@ -252,6 +258,9 @@ class RegionController extends Controller
             'wilaya_codes.*' => 'string',
             'delegate_ids' => 'nullable|array',
             'delegate_ids.*' => 'string',
+        ], [
+            'name.unique' => 'Une région avec ce nom existe déjà.',
+            'code.unique' => 'Une région avec ce code existe déjà.',
         ]);
 
         $oldName = $region->name;
@@ -260,6 +269,15 @@ class RegionController extends Controller
         // Customize & update Wilayas assigned to this region
         if ($request->has('wilaya_codes')) {
             $codes = $request->input('wilaya_codes', []);
+            // Unassign wilayas previously in this region that were deselected
+            $deselectedCodes = Wilaya::where('custom_region_id', $region->id)
+                ->whereNotIn('code', $codes)
+                ->pluck('code')
+                ->toArray();
+            if (! empty($deselectedCodes)) {
+                Wilaya::resetToDefaults($deselectedCodes);
+            }
+
             if (! empty($codes)) {
                 Wilaya::whereIn('code', $codes)->update([
                     'region_name' => $region->name,
@@ -295,6 +313,11 @@ class RegionController extends Controller
 
     public function destroy(Region $region): JsonResponse
     {
+        $wilayaCodes = Wilaya::where('custom_region_id', $region->id)->pluck('code')->toArray();
+        if (! empty($wilayaCodes)) {
+            Wilaya::resetToDefaults($wilayaCodes);
+        }
+
         $region->delete();
 
         return response()->json(['message' => 'Region deleted successfully']);
@@ -302,12 +325,18 @@ class RegionController extends Controller
 
     private function formatRegion(Region $region): array
     {
-        // 1. Mapped Wilayas
-        $wilayas = Wilaya::where(function ($q) use ($region) {
-            $q->where('region_name', $region->name)
-                ->orWhere('region_id', $region->code)
-                ->orWhere('custom_region_id', $region->id);
-        })->get();
+        // 1. Mapped Wilayas: strictly wilayas explicitly assigned to this custom region
+        $wilayas = Wilaya::where('custom_region_id', $region->id)->get();
+        if ($wilayas->isEmpty()) {
+            $baseCodes = ['center', 'east', 'west', 'south'];
+            if (in_array(strtolower($region->code), $baseCodes)) {
+                $wilayas = Wilaya::whereNull('custom_region_id')
+                    ->where(function ($q) use ($region) {
+                        $q->where('region_id', strtolower($region->code))
+                          ->orWhereRaw('LOWER(region_name) = ?', [strtolower($region->name)]);
+                    })->get();
+            }
+        }
 
         // 2. Commercial Delegates explicitly assigned to this region
         $regionDelegates = User::where('role', 'delegate')

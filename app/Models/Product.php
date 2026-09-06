@@ -39,6 +39,7 @@ class Product extends Model
         'discount_percent',
         'stock_quantity',
         'min_stock',
+        'track_stock',
         'status',
         'reserved',
         'warehouse',
@@ -55,6 +56,7 @@ class Product extends Model
             'revenue' => 'decimal:2',
             'stock_quantity' => 'integer',
             'min_stock' => 'integer',
+            'track_stock' => 'boolean',
             'reserved' => 'integer',
             'total_sold' => 'integer',
         ];

@@ -26,6 +26,8 @@ class Order extends Model
 
     protected $casts = [
         'total_amount' => 'float',
+        'delegate_id' => 'integer',
+        'client_id' => 'integer',
     ];
 
     public function items()

@@ -62,6 +62,16 @@ class Client extends Model
         ];
     }
 
+    protected static function booted(): void
+    {
+        static::creating(function (Client $client) {
+            if (empty($client->client_code)) {
+                $maxId = (int) (static::max('id') ?? 0);
+                $client->client_code = sprintf('CLT-%05d', $maxId + 1);
+            }
+        });
+    }
+
     public function delegate(): BelongsTo
     {
         return $this->belongsTo(User::class, 'delegate_id');

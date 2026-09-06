@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Product;
+use App\Models\StockMovement;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -116,6 +117,10 @@ class ProductController extends Controller
             $request->merge(['code' => $request->input('sku')]);
         }
 
+        if (! $request->has('track_stock') && $request->has('trackStock')) {
+            $request->merge(['track_stock' => $request->input('trackStock')]);
+        }
+
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'code' => 'nullable|string|max:100|unique:products,code',
@@ -124,8 +129,9 @@ class ProductController extends Controller
             'operator' => 'required|string|max:100',
             'nominal_price' => 'required|numeric|min:0',
             'discount_percent' => 'nullable|numeric|min:0|max:100',
-            'stock_quantity' => 'required|integer|min:0',
+            'stock_quantity' => 'nullable|integer|min:0',
             'min_stock' => 'nullable|integer|min:0',
+            'track_stock' => 'nullable|boolean',
             'status' => 'nullable|string|max:50',
             'warehouse' => 'nullable|string|max:255',
             'region' => 'nullable|string|max:255',
@@ -136,10 +142,48 @@ class ProductController extends Controller
         }
 
         $validated['discount_percent'] = $validated['discount_percent'] ?? 0;
-        $validated['min_stock'] = $validated['min_stock'] ?? 100;
-        $validated['status'] = $validated['status'] ?? ($validated['stock_quantity'] == 0 ? 'out_of_stock' : 'active');
+
+        // Handle optional stock tracking
+        $hasStockQuantity = array_key_exists('stock_quantity', $validated) && $validated['stock_quantity'] !== null && $validated['stock_quantity'] !== '';
+        $trackStock = $validated['track_stock'] ?? $hasStockQuantity;
+        $validated['track_stock'] = (bool) $trackStock;
+
+        if (! $trackStock) {
+            $validated['stock_quantity'] = null;
+            $validated['min_stock'] = null;
+        } else {
+            $validated['stock_quantity'] = (int) ($validated['stock_quantity'] ?? 0);
+            $validated['min_stock'] = isset($validated['min_stock']) ? (int) $validated['min_stock'] : 100;
+        }
+
+        $validated['status'] = $validated['status'] ?? ($trackStock && $validated['stock_quantity'] === 0 ? 'out_of_stock' : 'active');
 
         $product = Product::create($validated);
+
+        if ($product->track_stock && $product->stock_quantity > 0) {
+            try {
+                $year = now()->year;
+                $count = StockMovement::whereYear('created_at', $year)->count() + 1;
+                $refStk = sprintf('STK-%d-%04d', $year, $count);
+
+                StockMovement::create([
+                    'reference' => $refStk,
+                    'product_id' => $product->id,
+                    'product_name' => $product->name,
+                    'movement_type' => 'incoming',
+                    'quantity' => $product->stock_quantity,
+                    'warehouse' => $product->warehouse ?: 'Entrepôt Central',
+                    'destination_warehouse' => null,
+                    'delegate_name' => auth()->user()?->name ?? 'Admin System',
+                    'user_id' => auth()->id(),
+                    'status' => 'completed',
+                    'date' => now(),
+                    'notes' => 'Stock initial lors de la création du produit',
+                ]);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('StockMovement creation failed on product create: ' . $e->getMessage());
+            }
+        }
 
         return response()->json([
             'data' => $this->formatProduct($product),
@@ -174,6 +218,9 @@ class ProductController extends Controller
         if (! $request->has('code') && $request->has('sku')) {
             $request->merge(['code' => $request->input('sku')]);
         }
+        if (! $request->has('track_stock') && $request->has('trackStock')) {
+            $request->merge(['track_stock' => $request->input('trackStock')]);
+        }
 
         $validated = $request->validate([
             'name' => 'sometimes|string|max:255',
@@ -183,8 +230,9 @@ class ProductController extends Controller
             'operator' => 'sometimes|string|max:100',
             'nominal_price' => 'sometimes|numeric|min:0',
             'discount_percent' => 'sometimes|numeric|min:0|max:100',
-            'stock_quantity' => 'sometimes|integer|min:0',
-            'min_stock' => 'sometimes|integer|min:0',
+            'stock_quantity' => 'nullable|integer|min:0',
+            'min_stock' => 'nullable|integer|min:0',
+            'track_stock' => 'nullable|boolean',
             'status' => 'sometimes|string|max:50',
             'warehouse' => 'nullable|string|max:255',
             'region' => 'nullable|string|max:255',
@@ -209,14 +257,24 @@ class ProductController extends Controller
     {
         $totalProducts = Product::count();
         $activeProducts = Product::where('status', 'active')->count();
-        $totalStock = (int) Product::sum('stock_quantity');
-        $lowStockCount = Product::where('stock_quantity', '>', 0)
-            ->where('stock_quantity', '<=', DB::raw('min_stock'))
+        $totalStock = (int) Product::where('track_stock', true)->whereNotNull('stock_quantity')->sum('stock_quantity');
+        $lowStockCount = Product::where('track_stock', true)
+            ->whereNotNull('stock_quantity')
+            ->where('stock_quantity', '>', 0)
+            ->where('stock_quantity', '<=', DB::raw('COALESCE(min_stock, 100)'))
             ->count();
-        $outOfStockCount = Product::where('stock_quantity', '<=', 0)->count();
+        $outOfStockCount = Product::where('track_stock', true)
+            ->where(function ($q) {
+                $q->where('stock_quantity', '<=', 0)
+                    ->orWhere('status', 'out_of_stock');
+            })
+            ->count();
 
         // Catalog valuation (sum of nominal_price * stock_quantity)
-        $catalogValue = (float) Product::select(DB::raw('SUM(nominal_price * stock_quantity) as total_val'))->value('total_val');
+        $catalogValue = (float) Product::where('track_stock', true)
+            ->whereNotNull('stock_quantity')
+            ->select(DB::raw('SUM(nominal_price * stock_quantity) as total_val'))
+            ->value('total_val');
 
         return response()->json([
             'totalProducts' => $totalProducts,
@@ -307,6 +365,7 @@ class ProductController extends Controller
             'stock' => $product->stock_quantity,
             'stockQuantity' => $product->stock_quantity,
             'minStock' => $product->min_stock,
+            'trackStock' => (bool) ($product->track_stock ?? true),
             'status' => $product->status,
             'reserved' => $product->reserved,
             'warehouse' => $product->warehouse,

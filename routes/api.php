@@ -68,6 +68,9 @@ Route::get('/regions/kpis', [RegionController::class, 'kpis']);
 Route::get('/regions/analytics', [RegionController::class, 'analytics']);
 Route::get('/regions', [RegionController::class, 'index']);
 Route::get('/regions/{region}', [RegionController::class, 'show']);
+Route::post('/regions', [RegionController::class, 'store']);
+Route::put('/regions/{region}', [RegionController::class, 'update']);
+Route::delete('/regions/{region}', [RegionController::class, 'destroy']);
 
 Route::get('/operators', [OperatorController::class, 'index']);
 Route::get('/categories', [CategoryController::class, 'index']);

@@ -9,6 +9,7 @@ use App\Models\Product;
 use App\Models\Client;
 use App\Models\Category;
 use App\Models\OrderValidationLog;
+use App\Models\StockMovement;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -334,14 +335,14 @@ class OrderController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'client_id' => 'nullable|string',
+            'client_id' => 'nullable',
             'client_name' => 'required_without:client_id|nullable|string',
-            'delegate_id' => 'nullable|string',
+            'delegate_id' => 'nullable',
             'delegate_name' => 'nullable|string',
             'region' => 'nullable|string',
             'wilaya' => 'nullable|string',
             'items' => 'required|array|min:1',
-            'items.*.product_id' => 'nullable|string',
+            'items.*.product_id' => 'nullable',
             'items.*.product_name' => 'required_without:items.*.product_id|nullable|string',
             'items.*.quantity' => 'required|integer|min:1',
             'items.*.unit_price' => 'nullable|numeric|min:0',
@@ -413,22 +414,35 @@ class OrderController extends Controller
                     $dbProduct = Product::find($productId);
                     if ($dbProduct) {
                         $productName = $dbProduct->name;
-                        $reference = $dbProduct->sku ?? $reference;
+                        $reference = $dbProduct->code ?? $reference;
                         if ($unitPrice <= 0) {
                             $unitPrice = (float) $dbProduct->nominal_price;
                         }
 
-                        // Check stock level
-                        if ($dbProduct->stock_quantity < $quantity) {
-                            DB::rollBack();
-                            return response()->json([
-                                'message' => "Stock insuffisant pour le produit \"{$dbProduct->name}\". Stock disponible : {$dbProduct->stock_quantity}",
-                                'errors' => ['stock' => ["Stock insuffisant pour {$dbProduct->name}"]],
-                            ], 400);
+                        // Check if stock tracking is enabled for this product
+                        $isStockTracked = (bool) ($dbProduct->track_stock ?? true) && !is_null($dbProduct->stock_quantity);
+                        $catLower = strtolower($dbProduct->category ?? '');
+                        if (str_contains($catLower, 'credit') || str_contains($catLower, 'recharge') || str_contains($catLower, 'virtual')) {
+                            $isStockTracked = false;
                         }
 
-                        // Deduct stock
-                        $dbProduct->decrement('stock_quantity', $quantity);
+                        if ($isStockTracked) {
+                            // Check stock level
+                            if ($dbProduct->stock_quantity < $quantity) {
+                                DB::rollBack();
+                                return response()->json([
+                                    'message' => "Stock insuffisant pour le produit \"{$dbProduct->name}\". Stock disponible : {$dbProduct->stock_quantity}",
+                                    'errors' => ['stock' => ["Stock insuffisant pour {$dbProduct->name}"]],
+                                ], 400);
+                            }
+
+                            // Deduct stock
+                            $dbProduct->decrement('stock_quantity', $quantity);
+                        }
+
+                        // Update sold analytics
+                        $dbProduct->increment('total_sold', $quantity);
+                        $dbProduct->increment('revenue', $unitPrice * $quantity);
                     }
                 }
 
@@ -465,6 +479,39 @@ class OrderController extends Controller
             ]);
 
             $order->items()->createMany($orderItemsData);
+
+            // Create stock movement records for inventory tracking
+            foreach ($orderItemsData as $orderItem) {
+                if (!empty($orderItem['product_id'])) {
+                    $prodItem = Product::find($orderItem['product_id']);
+                    if (!$prodItem || !$prodItem->track_stock || is_null($prodItem->stock_quantity)) {
+                        continue;
+                    }
+
+                    try {
+                        $year = now()->year;
+                        $count = StockMovement::whereYear('created_at', $year)->count() + 1;
+                        $refStk = sprintf('STK-%d-%04d', $year, $count);
+
+                        StockMovement::create([
+                            'reference' => $refStk,
+                            'product_id' => $orderItem['product_id'],
+                            'product_name' => $orderItem['product_name'],
+                            'movement_type' => 'outgoing',
+                            'quantity' => $orderItem['quantity'],
+                            'warehouse' => $prodItem->warehouse ?: 'Entrepôt Central',
+                            'destination_warehouse' => null,
+                            'delegate_name' => $delegateName,
+                            'user_id' => $user?->id,
+                            'status' => 'completed',
+                            'date' => now(),
+                            'notes' => "Commande #{$orderCode} - {$clientName}",
+                        ]);
+                    } catch (\Throwable $e) {
+                        \Illuminate\Support\Facades\Log::warning("Stock movement logging skipped: " . $e->getMessage());
+                    }
+                }
+            }
 
             // Update client financial stats if client exists
             if (!empty($client)) {

@@ -36,4 +36,13 @@ class Region extends Model
     {
         return $this->hasMany(User::class, 'region', 'name');
     }
+
+    public function resolveRouteBinding($value, $field = null)
+    {
+        if (is_numeric($value)) {
+            return $this->where('id', $value)->first() ?? $this->where('code', $value)->firstOrFail();
+        }
+
+        return $this->where('code', $value)->firstOrFail();
+    }
 }
