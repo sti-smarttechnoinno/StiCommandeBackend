@@ -1,7 +1,7 @@
 # =========================================================
 # Stage 1: Build Frontend Assets (Vite / React / Tailwind)
 # =========================================================
-FROM node:20-alpine AS node_builder
+FROM docker.io/library/node:20-alpine AS node_builder
 
 WORKDIR /app
 
@@ -23,7 +23,7 @@ RUN npm prune --omit=dev
 # =========================================================
 # Stage 2: Install PHP Composer Dependencies
 # =========================================================
-FROM composer:2 AS composer_builder
+FROM docker.io/library/composer:2 AS composer_builder
 
 WORKDIR /app
 
@@ -43,7 +43,7 @@ RUN composer install \
 # Stage 3: Production Runtime (PHP 8.5 FPM + Nginx + WebSockets)
 # =========================================================
 ARG PHP_VERSION=8.5
-FROM php:${PHP_VERSION}-fpm-alpine
+FROM docker.io/library/php:${PHP_VERSION}-fpm-alpine
 
 LABEL maintainer="StiCommande DevOps Team"
 LABEL description="Production Docker image for StiCommande Backend (PHP 8.5 + Laravel + Nginx + WebSockets)"

@@ -66,7 +66,7 @@ pipeline {
                             -e POSTGRES_USER=postgres \
                             -e POSTGRES_PASSWORD=secret_test_pass \
                             -p 5433:5432 \
-                            postgres:16-alpine
+                            docker.io/library/postgres:16-alpine
 
                         echo "--> Waiting for PostgreSQL test database to be healthy..."
                         for i in \$(seq 1 20); do
@@ -94,7 +94,7 @@ pipeline {
                             docker run --rm \
                                 --network host \
                                 -v "\$(pwd):/app" -w /app \
-                                php:${PHP_VERSION}-alpine sh -c "
+                                docker.io/library/php:${PHP_VERSION}-alpine sh -c "
                                     apk add --no-cache curl postgresql-dev icu-dev libzip-dev
                                     docker-php-ext-install pdo pdo_pgsql intl zip
                                     curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
