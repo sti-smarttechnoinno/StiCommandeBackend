@@ -1,27 +1,5 @@
 # =========================================================
-# Stage 1: Build Frontend Assets (Vite / React / Tailwind)
-# =========================================================
-FROM docker.io/library/node:20-alpine AS node_builder
-
-WORKDIR /app
-
-# Copy dependency definitions
-COPY package.json package-lock.json ./
-
-# Install dependencies (clean install)
-RUN npm ci
-
-# Copy application source code for asset compilation
-COPY . .
-
-# Build Vite assets
-RUN npm run build
-
-# Remove development dependencies to keep production footprint minimal
-RUN npm prune --omit=dev
-
-# =========================================================
-# Stage 2: Install PHP Composer Dependencies
+# Stage 1: Install PHP Composer Dependencies
 # =========================================================
 FROM docker.io/library/composer:2 AS composer_builder
 
@@ -38,6 +16,49 @@ RUN composer install \
     --optimize-autoloader \
     --no-scripts \
     --ignore-platform-reqs
+
+# Copy application code to generate complete autoloader
+COPY . .
+RUN composer dump-autoload --optimize --no-scripts
+
+# =========================================================
+# Stage 2: Build Frontend Assets (Vite / React / Tailwind)
+# =========================================================
+FROM docker.io/library/node:20-alpine AS node_builder
+
+WORKDIR /app
+
+# Install PHP CLI & modules required by Wayfinder (artisan wayfinder:generate)
+RUN apk add --no-cache \
+    php \
+    php-cli \
+    php-phar \
+    php-mbstring \
+    php-openssl \
+    php-tokenizer \
+    php-xml \
+    php-dom \
+    php-curl \
+    php-fileinfo
+
+# Provide dummy key for artisan commands during build
+ENV APP_KEY=base64:Sm9obkRvZUlzQUZha2VLZXlGb3JUZXN0aW5nMTIzNDU=
+
+# Copy dependency definitions & clean install
+COPY package.json package-lock.json ./
+RUN npm ci
+
+# Copy application source code
+COPY . .
+
+# Copy vendor from composer_builder so artisan wayfinder:generate can run
+COPY --from=composer_builder /app/vendor ./vendor
+
+# Build Vite assets
+RUN npm run build
+
+# Remove development dependencies to keep production footprint minimal
+RUN npm prune --omit=dev
 
 # =========================================================
 # Stage 3: Production Runtime (PHP 8.5 FPM + Nginx + WebSockets)
