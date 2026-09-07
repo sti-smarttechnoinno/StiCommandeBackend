@@ -53,32 +53,64 @@ pipeline {
         stage('Test & Quality') {
             steps {
                 dir("${env.APP_DIR}") {
-                    echo "--> Running automated tests and code checks using PHP ${PHP_VERSION}..."
+                    echo "--> Setting up ephemeral PostgreSQL test database and running tests..."
                     sh """
-                        # Check for PHP 8.5 on host or run inside container
-                        if command -v php${PHP_VERSION} >/dev/null 2>&1; then
-                            PHP_CMD="php${PHP_VERSION}"
-                        else
-                            PHP_CMD="php"
-                        fi
+                        TEST_PG_CONTAINER="pg_test_${BUILD_NUMBER}"
 
-                        echo "Using PHP command: \$(\$PHP_CMD -v | head -n 1)"
+                        # Clean up any leftover test container
+                        docker rm -f "\$TEST_PG_CONTAINER" || true
 
+                        echo "--> Starting ephemeral PostgreSQL 16 test container on port 5433..."
+                        docker run -d --name "\$TEST_PG_CONTAINER" \
+                            -e POSTGRES_DB=sticommande_test \
+                            -e POSTGRES_USER=postgres \
+                            -e POSTGRES_PASSWORD=secret_test_pass \
+                            -p 5433:5432 \
+                            postgres:16-alpine
+
+                        echo "--> Waiting for PostgreSQL test database to be healthy..."
+                        for i in \$(seq 1 20); do
+                            if docker exec "\$TEST_PG_CONTAINER" pg_isready -U postgres -d sticommande_test >/dev/null 2>&1; then
+                                echo "PostgreSQL test container is ready!"
+                                break
+                            fi
+                            sleep 1
+                        done
+
+                        # Install composer dependencies
                         if command -v composer >/dev/null 2>&1; then
                             composer install --prefer-dist --no-interaction
-                            if [ -f artisan ]; then
-                                \$PHP_CMD artisan test --env=testing || ./vendor/bin/phpunit
-                            fi
-                        else
-                            echo "Composer not found on agent host; running tests inside php:${PHP_VERSION}-alpine container..."
-                            docker run --rm -v "\$(pwd):/app" -w /app php:${PHP_VERSION}-alpine sh -c "
-                                apk add --no-cache curl sqlite-dev icu-dev libzip-dev
-                                docker-php-ext-install pdo pdo_sqlite intl zip
-                                curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
-                                composer install --prefer-dist --no-interaction
-                                php artisan test --env=testing
-                            "
                         fi
+
+                        # Check if host PHP 8.5 has pdo_pgsql extension
+                        if command -v php${PHP_VERSION} >/dev/null 2>&1 && php${PHP_VERSION} -m | grep -qi pdo_pgsql; then
+                            echo "--> Running tests with host php${PHP_VERSION} against PostgreSQL..."
+                            php${PHP_VERSION} artisan test --env=testing
+                        elif command -v php >/dev/null 2>&1 && php -m | grep -qi pdo_pgsql; then
+                            echo "--> Running tests with host php against PostgreSQL..."
+                            php artisan test --env=testing
+                        else
+                            echo "--> Host PHP lacks pdo_pgsql extension. Running tests in Docker container with PHP ${PHP_VERSION} & PostgreSQL drivers..."
+                            docker run --rm \
+                                --network host \
+                                -v "\$(pwd):/app" -w /app \
+                                php:${PHP_VERSION}-alpine sh -c "
+                                    apk add --no-cache curl postgresql-dev icu-dev libzip-dev
+                                    docker-php-ext-install pdo pdo_pgsql intl zip
+                                    curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+                                    composer install --prefer-dist --no-interaction
+                                    php artisan test --env=testing
+                                "
+                        fi
+                    """
+                }
+            }
+            post {
+                always {
+                    sh """
+                        TEST_PG_CONTAINER="pg_test_${BUILD_NUMBER}"
+                        echo "--> Cleaning up ephemeral PostgreSQL test container..."
+                        docker rm -f "\$TEST_PG_CONTAINER" || true
                     """
                 }
             }
