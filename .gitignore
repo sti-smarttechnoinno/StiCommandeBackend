@@ -15,6 +15,7 @@
 *firebase-credentials*.json
 /vendor
 .env
+.env.*
 .env.backup
 .env.production
 .phpactor.json
@@ -30,3 +31,4 @@ yarn-error.log
 /.vscode
 /.zed
 CPANEL_REALTIME_GUIDE.md
+.dockerignore
