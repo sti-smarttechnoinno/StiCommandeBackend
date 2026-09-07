@@ -4,7 +4,7 @@ pipeline {
     options {
         timeout(time: 30, unit: 'MINUTES')
         buildDiscarder(logRotator(numToKeepStr: '10', artifactNumToKeepStr: '10'))
-        ansiColor('xterm')
+        timestamps()
     }
 
     environment {
@@ -142,15 +142,15 @@ pipeline {
             }
             steps {
                 echo "--> Pushing image to remote registry: ${REGISTRY_URL}..."
-                script {
-                    docker.withRegistry("https://${env.REGISTRY_URL}", "${env.REGISTRY_CREDENTIALS}") {
-                        sh """
-                            docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${REGISTRY_URL}/${IMAGE_NAME}:${IMAGE_TAG}
-                            docker tag ${IMAGE_NAME}:latest ${REGISTRY_URL}/${IMAGE_NAME}:latest
-                            docker push ${REGISTRY_URL}/${IMAGE_NAME}:${IMAGE_TAG}
-                            docker push ${REGISTRY_URL}/${IMAGE_NAME}:latest
-                        """
-                    }
+                withCredentials([usernamePassword(credentialsId: "${env.REGISTRY_CREDENTIALS}", usernameVariable: 'REG_USER', passwordVariable: 'REG_PASS')]) {
+                    sh """
+                        echo "\$REG_PASS" | docker login -u "\$REG_USER" --password-stdin "${env.REGISTRY_URL}"
+                        docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${REGISTRY_URL}/${IMAGE_NAME}:${IMAGE_TAG}
+                        docker tag ${IMAGE_NAME}:latest ${REGISTRY_URL}/${IMAGE_NAME}:latest
+                        docker push ${REGISTRY_URL}/${IMAGE_NAME}:${IMAGE_TAG}
+                        docker push ${REGISTRY_URL}/${IMAGE_NAME}:latest
+                        docker logout "${env.REGISTRY_URL}" || true
+                    """
                 }
             }
         }
