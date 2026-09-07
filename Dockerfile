@@ -28,22 +28,6 @@ FROM docker.io/library/node:20-alpine AS node_builder
 
 WORKDIR /app
 
-# Install PHP CLI & modules required by Wayfinder (artisan wayfinder:generate)
-RUN apk add --no-cache \
-    php \
-    php-cli \
-    php-phar \
-    php-mbstring \
-    php-openssl \
-    php-tokenizer \
-    php-xml \
-    php-dom \
-    php-curl \
-    php-fileinfo
-
-# Provide dummy key for artisan commands during build
-ENV APP_KEY=base64:Sm9obkRvZUlzQUZha2VLZXlGb3JUZXN0aW5nMTIzNDU=
-
 # Copy dependency definitions & clean install
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -51,10 +35,7 @@ RUN npm ci
 # Copy application source code
 COPY . .
 
-# Copy vendor from composer_builder so artisan wayfinder:generate can run
-COPY --from=composer_builder /app/vendor ./vendor
-
-# Build Vite assets
+# Build Vite production bundle
 RUN npm run build
 
 # Remove development dependencies to keep production footprint minimal
