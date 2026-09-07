@@ -82,6 +82,9 @@ pipeline {
                             composer install --prefer-dist --no-interaction
                         fi
 
+                        # Set testing APP_KEY if missing
+                        export APP_KEY="base64:Sm9obkRvZUlzQUZha2VLZXlGb3JUZXN0aW5nMTIzNDU="
+
                         # Check if host PHP 8.5 has pdo_pgsql extension
                         if command -v php${PHP_VERSION} >/dev/null 2>&1 && php${PHP_VERSION} -m | grep -qi pdo_pgsql; then
                             echo "--> Running tests with host php${PHP_VERSION} against PostgreSQL..."
