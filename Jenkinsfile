@@ -85,6 +85,10 @@ pipeline {
                         # Set testing APP_KEY if missing
                         export APP_KEY="base64:Sm9obkRvZUlzQUZha2VLZXlGb3JUZXN0aW5nMTIzNDU="
 
+                        # Ensure stub Vite manifest exists for testing views
+                        mkdir -p public/build
+                        echo '{}' > public/build/manifest.json
+
                         # Check if host PHP 8.5 has pdo_pgsql extension
                         if command -v php${PHP_VERSION} >/dev/null 2>&1 && php${PHP_VERSION} -m | grep -qi pdo_pgsql; then
                             echo "--> Running tests with host php${PHP_VERSION} against PostgreSQL..."
