@@ -62,7 +62,7 @@ pipeline {
                 dir("${env.APP_DIR}") {
                     echo "--> Setting up ephemeral PostgreSQL test database and running tests..."
                     sh """
-                        TEST_PG_CONTAINER="pg_test_${BUILD_NUMBER}"
+                        TEST_PG_CONTAINER="pg_test_${env.BUILD_NUMBER}"
 
                         # Clean up any leftover test container
                         docker rm -f "\$TEST_PG_CONTAINER" || true
@@ -97,18 +97,18 @@ pipeline {
                         echo '{}' > public/build/manifest.json
 
                         # Check if host PHP 8.5 has pdo_pgsql extension
-                        if command -v php${PHP_VERSION} >/dev/null 2>&1 && php${PHP_VERSION} -m | grep -qi pdo_pgsql; then
-                            echo "--> Running tests with host php${PHP_VERSION} against PostgreSQL..."
-                            php${PHP_VERSION} artisan test --env=testing
+                        if command -v php${env.PHP_VERSION} >/dev/null 2>&1 && php${env.PHP_VERSION} -m | grep -qi pdo_pgsql; then
+                            echo "--> Running tests with host php${env.PHP_VERSION} against PostgreSQL..."
+                            php${env.PHP_VERSION} artisan test --env=testing
                         elif command -v php >/dev/null 2>&1 && php -m | grep -qi pdo_pgsql; then
                             echo "--> Running tests with host php against PostgreSQL..."
                             php artisan test --env=testing
                         else
-                            echo "--> Host PHP lacks pdo_pgsql extension. Running tests in Docker container with PHP ${PHP_VERSION} & PostgreSQL drivers..."
+                            echo "--> Host PHP lacks pdo_pgsql extension. Running tests in Docker container with PHP ${env.PHP_VERSION} & PostgreSQL drivers..."
                             docker run --rm \
                                 --network host \
                                 -v "\$(pwd):/app" -w /app \
-                                docker.io/library/php:${PHP_VERSION}-alpine sh -c "
+                                docker.io/library/php:${env.PHP_VERSION}-alpine sh -c "
                                     apk add --no-cache curl postgresql-dev icu-dev libzip-dev
                                     docker-php-ext-install pdo pdo_pgsql intl zip
                                     curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
@@ -122,7 +122,7 @@ pipeline {
             post {
                 always {
                     sh """
-                        TEST_PG_CONTAINER="pg_test_${BUILD_NUMBER}"
+                        TEST_PG_CONTAINER="pg_test_${env.BUILD_NUMBER}"
                         echo "--> Cleaning up ephemeral PostgreSQL test container..."
                         docker rm -f "\$TEST_PG_CONTAINER" || true
                         echo "--> Cleaning up test bootstrap cache..."
@@ -135,12 +135,12 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 dir("${env.APP_DIR}") {
-                    echo "--> Building production Docker image with PHP ${PHP_VERSION}: ${IMAGE_NAME}:${IMAGE_TAG}..."
+                    echo "--> Building production Docker image with PHP ${env.PHP_VERSION}: ${env.IMAGE_NAME}:${env.IMAGE_TAG}..."
                     sh """
                         docker build \
-                            --build-arg PHP_VERSION=${PHP_VERSION} \
-                            -t ${IMAGE_NAME}:${IMAGE_TAG} \
-                            -t ${IMAGE_NAME}:latest \
+                            --build-arg PHP_VERSION=${env.PHP_VERSION} \
+                            -t ${env.IMAGE_NAME}:${env.IMAGE_TAG} \
+                            -t ${env.IMAGE_NAME}:latest \
                             -f Dockerfile .
                     """
                 }
@@ -151,7 +151,7 @@ pipeline {
             steps {
                 echo "--> Performing container smoke test on health endpoint /up..."
                 sh """
-                    TEST_CONTAINER="test_${IMAGE_NAME}_${BUILD_NUMBER}"
+                    TEST_CONTAINER="test_${env.IMAGE_NAME}_${env.BUILD_NUMBER}"
 
                     # Clean up any leftover test container
                     docker rm -f "\$TEST_CONTAINER" >/dev/null 2>&1 || true
@@ -166,7 +166,7 @@ pipeline {
                         -e START_WEBSOCKET=false \
                         -e START_QUEUE_WORKER=false \
                         -p 127.0.0.1:8099:80 \
-                        ${IMAGE_NAME}:${IMAGE_TAG}
+                        ${env.IMAGE_NAME}:${env.IMAGE_TAG}
 
                     echo "Waiting for container initialization..."
                     HTTP_STATUS="000"
@@ -212,18 +212,18 @@ pipeline {
         stage('Push to Registry') {
             when {
                 expression {
-                    return env.REGISTRY_URL != '' && env.REGISTRY_CREDENTIALS != ''
+                    return (env.REGISTRY_URL?.trim() ?: '') != '' && (env.REGISTRY_CREDENTIALS?.trim() ?: '') != ''
                 }
             }
             steps {
-                echo "--> Pushing image to remote registry: ${REGISTRY_URL}..."
+                echo "--> Pushing image to remote registry: ${env.REGISTRY_URL}..."
                 withCredentials([usernamePassword(credentialsId: "${env.REGISTRY_CREDENTIALS}", usernameVariable: 'REG_USER', passwordVariable: 'REG_PASS')]) {
                     sh """
                         echo "\$REG_PASS" | docker login -u "\$REG_USER" --password-stdin "${env.REGISTRY_URL}"
-                        docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${REGISTRY_URL}/${IMAGE_NAME}:${IMAGE_TAG}
-                        docker tag ${IMAGE_NAME}:latest ${REGISTRY_URL}/${IMAGE_NAME}:latest
-                        docker push ${REGISTRY_URL}/${IMAGE_NAME}:${IMAGE_TAG}
-                        docker push ${REGISTRY_URL}/${IMAGE_NAME}:latest
+                        docker tag ${env.IMAGE_NAME}:${env.IMAGE_TAG} ${env.REGISTRY_URL}/${env.IMAGE_NAME}:${env.IMAGE_TAG}
+                        docker tag ${env.IMAGE_NAME}:latest ${env.REGISTRY_URL}/${env.IMAGE_NAME}:latest
+                        docker push ${env.REGISTRY_URL}/${env.IMAGE_NAME}:${env.IMAGE_TAG}
+                        docker push ${env.REGISTRY_URL}/${env.IMAGE_NAME}:latest
                         docker logout "${env.REGISTRY_URL}" || true
                     """
                 }
@@ -234,56 +234,56 @@ pipeline {
             steps {
                 script {
                     dir("${env.APP_DIR}") {
-                        echo "--> Synchronizing updated code to ${DEPLOY_PATH}..."
+                        echo "--> Synchronizing updated code to ${env.DEPLOY_PATH}..."
                         sh """
                             # Ensure deploy directory exists
-                            sudo mkdir -p ${DEPLOY_PATH}
-                            sudo chown -R \$(whoami): ${DEPLOY_PATH} || true
+                            sudo mkdir -p ${env.DEPLOY_PATH}
+                            sudo chown -R \$(whoami): ${env.DEPLOY_PATH} || true
 
                             # Synchronize code to /var/www/commande/backend while protecting .env and storage
                             rsync -av --delete \
                                 --exclude=".git" \
                                 --exclude=".env" \
                                 --exclude="storage" \
-                                ./ ${DEPLOY_PATH}/
+                                ./ ${env.DEPLOY_PATH}/
 
                             # Ensure proper Laravel storage directories & permissions exist on server
-                            mkdir -p ${DEPLOY_PATH}/storage/framework/{cache/data,sessions,views}
-                            mkdir -p ${DEPLOY_PATH}/storage/logs
-                            mkdir -p ${DEPLOY_PATH}/bootstrap/cache
-                            chmod -R 775 ${DEPLOY_PATH}/storage ${DEPLOY_PATH}/bootstrap/cache
-                            sudo chown -R www-data:www-data ${DEPLOY_PATH}/storage ${DEPLOY_PATH}/bootstrap/cache || true
+                            mkdir -p ${env.DEPLOY_PATH}/storage/framework/{cache/data,sessions,views}
+                            mkdir -p ${env.DEPLOY_PATH}/storage/logs
+                            mkdir -p ${env.DEPLOY_PATH}/bootstrap/cache
+                            chmod -R 775 ${env.DEPLOY_PATH}/storage ${env.DEPLOY_PATH}/bootstrap/cache
+                            sudo chown -R www-data:www-data ${env.DEPLOY_PATH}/storage ${env.DEPLOY_PATH}/bootstrap/cache || true
                         """
 
                         if (env.DEPLOY_STRATEGY == 'docker-compose') {
-                            echo "--> Deploying via Docker Compose inside ${DEPLOY_PATH}..."
+                            echo "--> Deploying via Docker Compose inside ${env.DEPLOY_PATH}..."
                             sh """
-                                cd ${DEPLOY_PATH}
+                                cd ${env.DEPLOY_PATH}
                                 docker compose down --remove-orphans || true
                                 docker compose up -d --build
                                 docker compose ps
                             """
                         } else if (env.DEPLOY_STRATEGY == 'docker-run') {
-                            echo "--> Deploying standalone Docker container from ${DEPLOY_PATH}..."
+                            echo "--> Deploying standalone Docker container from ${env.DEPLOY_PATH}..."
                             sh """
-                                docker stop ${CONTAINER_NAME} || true
-                                docker rm -f ${CONTAINER_NAME} || true
+                                docker stop ${env.CONTAINER_NAME} || true
+                                docker rm -f ${env.CONTAINER_NAME} || true
 
                                 docker run -d \
-                                    --name ${CONTAINER_NAME} \
+                                    --name ${env.CONTAINER_NAME} \
                                     --restart unless-stopped \
-                                    -p ${CONTAINER_PORT}:80 \
-                                    -p ${WS_PORT}:8085 \
-                                    -v ${DEPLOY_PATH}/storage:/var/www/html/storage \
-                                    --env-file ${DEPLOY_PATH}/.env \
-                                    ${IMAGE_NAME}:latest
+                                    -p ${env.CONTAINER_PORT}:80 \
+                                    -p ${env.WS_PORT}:8085 \
+                                    -v ${env.DEPLOY_PATH}/storage:/var/www/html/storage \
+                                    --env-file ${env.DEPLOY_PATH}/.env \
+                                    ${env.IMAGE_NAME}:latest
 
-                                echo "--> Deployment active on port ${CONTAINER_PORT} (Web) and ${WS_PORT} (WebSockets)."
+                                echo "--> Deployment active on port ${env.CONTAINER_PORT} (Web) and ${env.WS_PORT} (WebSockets)."
                             """
                         } else if (env.DEPLOY_STRATEGY == 'rsync') {
-                            echo "--> Executing host post-deploy hooks in ${DEPLOY_PATH}..."
+                            echo "--> Executing host post-deploy hooks in ${env.DEPLOY_PATH}..."
                             sh """
-                                cd ${DEPLOY_PATH}
+                                cd ${env.DEPLOY_PATH}
                                 php artisan migrate --force || true
                                 php artisan config:cache || true
                                 php artisan route:cache || true
