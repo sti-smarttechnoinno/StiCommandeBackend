@@ -1,5 +1,5 @@
 # Global build arg for PHP version (available in all stages)
-ARG PHP_VERSION=8.4
+ARG PHP_VERSION=8.5
 
 # =========================================================
 # Stage 1: Install PHP Composer Dependencies
@@ -82,9 +82,7 @@ RUN apk add --no-cache \
         exif \
         gd \
         intl \
-        opcache \
         pcntl \
-        pdo \
         pdo_mysql \
         pdo_pgsql \
         pdo_sqlite \
