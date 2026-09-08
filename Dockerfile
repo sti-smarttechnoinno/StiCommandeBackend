@@ -1,5 +1,5 @@
 # Global build arg for PHP version (available in all stages)
-ARG PHP_VERSION=8.5
+ARG PHP_VERSION=8.4
 
 # =========================================================
 # Stage 1: Install PHP Composer Dependencies
