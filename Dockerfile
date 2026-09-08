@@ -1,3 +1,6 @@
+# Global build arg for PHP version (available in all stages)
+ARG PHP_VERSION=8.5
+
 # =========================================================
 # Stage 1: Install PHP Composer Dependencies
 # =========================================================
@@ -42,9 +45,8 @@ RUN npm run build
 RUN npm prune --omit=dev
 
 # =========================================================
-# Stage 3: Production Runtime (PHP 8.5 FPM + Nginx + WebSockets)
+# Stage 3: Production Runtime (PHP FPM + Nginx + WebSockets)
 # =========================================================
-ARG PHP_VERSION=8.5
 FROM docker.io/library/php:${PHP_VERSION}-fpm-alpine
 
 LABEL maintainer="StiCommande DevOps Team"
