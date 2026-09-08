@@ -88,8 +88,12 @@ RUN apk add --no-cache \
         pdo_sqlite \
         pgsql \
         zip \
-    && pecl install redis \
+    && mkdir -p /tmp/redis \
+    && (curl -fsSL --retry 3 https://pecl.php.net/get/redis -o /tmp/redis.tar.gz || curl -fsSL --retry 3 https://github.com/phpredis/phpredis/archive/refs/tags/6.1.0.tar.gz -o /tmp/redis.tar.gz) \
+    && tar -xzf /tmp/redis.tar.gz -C /tmp/redis --strip-components=1 \
+    && (cd /tmp/redis && phpize && ./configure && make -j$(nproc) && make install) \
     && docker-php-ext-enable redis \
+    && rm -rf /tmp/redis /tmp/redis.tar.gz \
     && apk del --no-cache \
         $PHPIZE_DEPS \
         libpng-dev \
