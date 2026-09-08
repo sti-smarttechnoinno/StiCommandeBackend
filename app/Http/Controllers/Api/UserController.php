@@ -41,7 +41,26 @@ class UserController extends Controller
         }
 
         if ($statuses = $request->input('status')) {
-            $query->whereIn('status', (array) $statuses);
+            $statusList = array_map('strtolower', (array) $statuses);
+            $query->where(function ($q) use ($statusList) {
+                $hasAuthorized = in_array('authorized', $statusList) || in_array('autorise', $statusList) || in_array('autorisé', $statusList);
+                $hasBlocked = in_array('blocked', $statusList) || in_array('bloque', $statusList) || in_array('bloqué', $statusList);
+
+                if ($hasAuthorized && !$hasBlocked) {
+                    $q->where('is_active', true)
+                      ->where(function ($sub) {
+                          $sub->whereNull('status')
+                              ->orWhereNotIn('status', ['blocked', 'bloque', 'bloqué', 'locked', 'suspended', 'deactivated']);
+                      });
+                } elseif ($hasBlocked && !$hasAuthorized) {
+                    $q->where(function ($sub) {
+                        $sub->where('is_active', false)
+                            ->orWhereIn('status', ['blocked', 'bloque', 'bloqué', 'locked', 'suspended', 'deactivated']);
+                    });
+                } else {
+                    $q->whereIn('status', $statusList);
+                }
+            });
         }
 
         if ($regions = $request->input('region')) {

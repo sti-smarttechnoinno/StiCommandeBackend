@@ -52,6 +52,14 @@ class NotificationController extends Controller
             }
         }
 
+        if ($startDate = $request->input('startDate')) {
+            $query->whereDate('created_at', '>=', $startDate);
+        }
+
+        if ($endDate = $request->input('endDate')) {
+            $query->whereDate('created_at', '<=', $endDate);
+        }
+
         $query->orderBy('created_at', 'desc');
 
         $page = max(1, (int) $request->input('page', 1));
@@ -59,8 +67,16 @@ class NotificationController extends Controller
         $total = (clone $query)->count();
         $items = $query->offset(($page - 1) * $pageSize)->limit($pageSize)->get();
 
+        $orderCodes = $items->filter(fn ($n) => ($n->category === 'orders' || strtolower($n->module ?? '') === 'orders') && !empty($n->reference_id) && !\Illuminate\Support\Str::isUuid($n->reference_id))
+            ->pluck('reference_id')
+            ->map(fn ($r) => preg_replace('/^[#\s]+/', '', (string) $r))
+            ->unique()
+            ->values();
+
+        $orderMap = $orderCodes->isNotEmpty() ? \App\Models\Order::whereIn('order_code', $orderCodes)->pluck('id', 'order_code') : collect();
+
         return response()->json([
-            'data' => $items->map(fn ($n) => $this->formatNotification($n)),
+            'data' => $items->map(fn ($n) => $this->formatNotification($n, $orderMap)),
             'total' => $total,
             'page' => $page,
             'pageSize' => $pageSize,
@@ -531,8 +547,22 @@ class NotificationController extends Controller
         ], 201);
     }
 
-    private function formatNotification(Notification $n): array
+    private function formatNotification(Notification $n, $orderMap = null): array
     {
+        $orderId = null;
+        $isOrder = ($n->category === 'orders' || strtolower($n->module ?? '') === 'orders');
+        if ($isOrder && !empty($n->reference_id)) {
+            if (\Illuminate\Support\Str::isUuid($n->reference_id)) {
+                $orderId = $n->reference_id;
+            } elseif ($orderMap && isset($orderMap[$n->reference_id])) {
+                $orderId = $orderMap[$n->reference_id];
+            } else {
+                $cleanRef = preg_replace('/^[#\s]+/', '', (string) $n->reference_id);
+                $found = \App\Models\Order::where('order_code', $cleanRef)->value('id');
+                $orderId = $found ?: $n->reference_id;
+            }
+        }
+
         return [
             'id' => (string) $n->id,
             'title' => $n->title,
@@ -544,6 +574,7 @@ class NotificationController extends Controller
             'region' => $n->region,
             'module' => $n->module,
             'referenceId' => $n->reference_id,
+            'orderId' => $orderId,
             'timestamp' => $n->created_at->toISOString(),
             'dateFormatted' => $n->created_at->diffForHumans(),
             'read' => (bool) $n->read,

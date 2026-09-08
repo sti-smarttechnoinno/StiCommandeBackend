@@ -33,12 +33,23 @@ class ClientController extends Controller
 
             if ($isRegionRestricted) {
                 $query->where(function ($q) use ($authUser) {
-                    $q->where('delegate_id', $authUser->id);
+                    $hasCondition = false;
                     if (!empty($authUser->region)) {
-                        $q->orWhere('region', $authUser->region);
+                        $q->whereRaw('LOWER(TRIM(region)) = ?', [strtolower(trim($authUser->region))]);
+                        $hasCondition = true;
                     }
                     if (!empty($authUser->wilaya)) {
-                        $q->orWhere('wilaya', $authUser->wilaya);
+                        if ($hasCondition) {
+                            $q->orWhereRaw('LOWER(TRIM(wilaya)) = ?', [strtolower(trim($authUser->wilaya))]);
+                        } else {
+                            $q->whereRaw('LOWER(TRIM(wilaya)) = ?', [strtolower(trim($authUser->wilaya))]);
+                            $hasCondition = true;
+                        }
+                    }
+                    if ($hasCondition) {
+                        $q->orWhere('delegate_id', $authUser->id);
+                    } else {
+                        $q->where('delegate_id', $authUser->id);
                     }
                 });
             }
@@ -63,7 +74,14 @@ class ClientController extends Controller
 
         if ($regions = $request->input('region')) {
             $regions = is_array($regions) ? $regions : explode(',', (string) $regions);
-            $query->whereIn('region', $regions);
+            $query->where(function ($q) use ($regions) {
+                foreach ($regions as $r) {
+                    $cleaned = strtolower(trim($r));
+                    if (!empty($cleaned)) {
+                        $q->orWhereRaw('LOWER(TRIM(region)) = ?', [$cleaned]);
+                    }
+                }
+            });
         }
 
         if ($delegates = $request->input('delegate')) {
@@ -266,6 +284,11 @@ class ClientController extends Controller
             ], 403);
         }
 
+        // Safeguard: Retain all historical orders and their client_name, ensuring NO cascade deletion
+        \App\Models\Order::where('client_id', $client->id)->update([
+            'client_id' => null,
+        ]);
+
         $client->delete();
 
         return response()->json(['message' => 'Client deleted successfully']);
@@ -377,7 +400,11 @@ class ClientController extends Controller
 
     public function analytics(): JsonResponse
     {
-        $regionalDistribution = Client::select('region', DB::raw('count(*) as value'))
+        $regionalDistribution = Client::select(
+            DB::raw("COALESCE(NULLIF(region, ''), 'Non assigné') as name"),
+            'region',
+            DB::raw('count(*) as value')
+        )
             ->groupBy('region')
             ->orderByDesc('value')
             ->get();

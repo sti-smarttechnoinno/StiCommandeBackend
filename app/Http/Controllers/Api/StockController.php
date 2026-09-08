@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\StockMovement;
 use App\Models\User;
+use App\Models\Warehouse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -210,9 +211,17 @@ class StockController extends Controller
             });
 
         if ($warehouses->isEmpty()) {
-            $warehouses = collect([
-                ['name' => 'Main Warehouse', 'utilization' => 75, 'color' => '#22C55E'],
-            ]);
+            $warehouses = Warehouse::where('is_active', true)
+                ->orderByDesc('is_default')
+                ->orderBy('name')
+                ->get()
+                ->map(function ($w, $idx) use ($palette) {
+                    return [
+                        'name' => $w->name,
+                        'utilization' => 0,
+                        'color' => $palette[$idx % count($palette)],
+                    ];
+                });
         }
 
         return response()->json([
@@ -229,6 +238,11 @@ class StockController extends Controller
 
     public function filterOptions(): JsonResponse
     {
+        $warehousesFromDb = Warehouse::where('is_active', true)
+            ->orderByDesc('is_default')
+            ->orderBy('name')
+            ->pluck('name');
+
         $warehousesFromProducts = Product::whereNotNull('warehouse')
             ->where('warehouse', '!=', '')
             ->distinct()
@@ -238,7 +252,8 @@ class StockController extends Controller
             ->distinct()
             ->pluck('warehouse');
 
-        $warehouses = $warehousesFromProducts
+        $warehouses = $warehousesFromDb
+            ->concat($warehousesFromProducts)
             ->concat($warehousesFromMovements)
             ->unique()
             ->filter()

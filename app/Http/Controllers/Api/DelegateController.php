@@ -7,6 +7,7 @@ use App\Models\Client;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class DelegateController extends Controller
 {
@@ -30,18 +31,38 @@ class DelegateController extends Controller
 
         if ($statuses = $request->input('status')) {
             $statusList = (array) $statuses;
-            if (in_array('online', $statusList)) {
-                $query->where('last_seen_at', '>=', now()->subSeconds(90));
-            } elseif (in_array('offline', $statusList)) {
-                $query->where(function ($q) {
-                    $q->whereNull('last_seen_at')
-                      ->orWhere('last_seen_at', '<', now()->subSeconds(90));
-                });
-            }
+            $query->where(function ($q) use ($statusList) {
+                if (in_array('online', $statusList)) {
+                    $q->orWhere('last_seen_at', '>=', now()->subSeconds(90));
+                }
+                if (in_array('offline', $statusList)) {
+                    $q->orWhere(function ($sub) {
+                        $sub->whereNull('last_seen_at')
+                            ->orWhere('last_seen_at', '<', now()->subSeconds(90));
+                    });
+                }
+                if (in_array('busy', $statusList)) {
+                    $q->orWhere('status', 'busy');
+                }
+                if (in_array('suspended', $statusList)) {
+                    $q->orWhere('status', 'suspended');
+                }
+            });
         }
 
         if ($regions = $request->input('region')) {
             $query->whereIn('region', (array) $regions);
+        }
+
+        if ($wilayas = $request->input('wilaya')) {
+            $query->whereIn('wilaya', (array) $wilayas);
+        }
+
+        if ($dateStart = $request->input('dateStart')) {
+            $query->where('created_at', '>=', $dateStart);
+        }
+        if ($dateEnd = $request->input('dateEnd')) {
+            $query->where('created_at', '<=', $dateEnd . ' 23:59:59');
         }
 
         $sortField = $request->input('sortField', 'created_at');
@@ -227,9 +248,13 @@ class DelegateController extends Controller
     public function analytics(): JsonResponse
     {
         $regional = User::where('role', 'delegate')
-            ->whereNotNull('region')
-            ->selectRaw('region as name, count(*) as value')
+            ->select(
+                DB::raw("COALESCE(NULLIF(region, ''), 'Non assigné') as name"),
+                'region',
+                DB::raw('count(*) as value')
+            )
             ->groupBy('region')
+            ->orderByDesc('value')
             ->get();
 
         $onlineCount = User::where('role', 'delegate')->where('last_seen_at', '>=', now()->subSeconds(90))->count();
@@ -464,5 +489,31 @@ class DelegateController extends Controller
             'lastActivity' => $lastActivity,
             'createdAt' => $delegate->created_at?->toISOString() ?? now()->toISOString(),
         ];
+    }
+
+    public function filterOptions(Request $request): JsonResponse
+    {
+        $delegateRegions = User::where('role', 'delegate')
+            ->whereNotNull('region')
+            ->where('region', '!=', '')
+            ->distinct()
+            ->pluck('region')
+            ->toArray();
+
+        $modelRegions = \App\Models\Region::whereNotNull('name')
+            ->where('name', '!=', '')
+            ->distinct()
+            ->pluck('name')
+            ->toArray();
+
+        $regions = array_values(array_unique(array_filter(array_merge($delegateRegions, $modelRegions))));
+        sort($regions, SORT_NATURAL | SORT_FLAG_CASE);
+
+        $statuses = ['online', 'busy', 'offline', 'suspended'];
+
+        return response()->json([
+            'regions' => $regions,
+            'statuses' => $statuses,
+        ]);
     }
 }

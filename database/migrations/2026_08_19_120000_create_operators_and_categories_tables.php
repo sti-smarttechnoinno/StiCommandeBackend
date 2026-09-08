@@ -32,25 +32,6 @@ return new class extends Migration
             $table->timestamps();
         });
 
-        // Insert initial default Operators
-        $now = now();
-        DB::table('operators')->insert([
-            ['name' => 'Mobilis', 'code' => 'MOB', 'color' => '#10b981', 'is_active' => true, 'created_at' => $now, 'updated_at' => $now],
-            ['name' => 'Ooredoo', 'code' => 'OOR', 'color' => '#f43f5e', 'is_active' => true, 'created_at' => $now, 'updated_at' => $now],
-            ['name' => 'Djezzy', 'code' => 'DJZ', 'color' => '#f59e0b', 'is_active' => true, 'created_at' => $now, 'updated_at' => $now],
-            ['name' => 'Other', 'code' => 'OTH', 'color' => '#64748b', 'is_active' => true, 'created_at' => $now, 'updated_at' => $now],
-        ]);
-
-        // Insert initial default Categories
-        DB::table('categories')->insert([
-            ['name' => 'Mobile Credit', 'slug' => 'mobile_credit', 'icon' => 'smartphone', 'description' => 'Electronic flexy mobile credit top-up', 'is_active' => true, 'created_at' => $now, 'updated_at' => $now],
-            ['name' => 'SIM Cards', 'slug' => 'sim_cards', 'icon' => 'sim-card', 'description' => 'Prepaid and postpaid SIM cards', 'is_active' => true, 'created_at' => $now, 'updated_at' => $now],
-            ['name' => 'Scratch Cards', 'slug' => 'scratch_cards', 'icon' => 'credit-card', 'description' => 'Physical recharge scratch vouchers', 'is_active' => true, 'created_at' => $now, 'updated_at' => $now],
-            ['name' => 'Data Packs', 'slug' => 'data_packs', 'icon' => 'wifi', 'description' => 'Internet data bundle packages', 'is_active' => true, 'created_at' => $now, 'updated_at' => $now],
-            ['name' => 'Voice Packages', 'slug' => 'voice_packages', 'icon' => 'phone-call', 'description' => 'Voice calling minutes packages', 'is_active' => true, 'created_at' => $now, 'updated_at' => $now],
-            ['name' => 'SMS Packages', 'slug' => 'sms_packages', 'icon' => 'message-square', 'description' => 'Text messaging bundles', 'is_active' => true, 'created_at' => $now, 'updated_at' => $now],
-            ['name' => 'Accessories', 'slug' => 'accessories', 'icon' => 'headphones', 'description' => 'Telecom accessories and hardware', 'is_active' => true, 'created_at' => $now, 'updated_at' => $now],
-        ]);
     }
 
     /**

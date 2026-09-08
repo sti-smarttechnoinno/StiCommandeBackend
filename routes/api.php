@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\DelegateObjectiveController;
 use App\Http\Controllers\Api\ClientObjectiveController;
 use App\Http\Controllers\Api\StockController;
+use App\Http\Controllers\Api\WarehouseController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/auth/login', [AuthController::class, 'login']);
@@ -88,8 +89,14 @@ Route::get('/stock/analytics', [StockController::class, 'analytics']);
 Route::get('/stock/filter-options', [StockController::class, 'filterOptions']);
 Route::get('/stock/movements', [StockController::class, 'index']);
 Route::post('/stock/movements', [StockController::class, 'store']);
+Route::get('/warehouses', [WarehouseController::class, 'index']);
+Route::post('/warehouses', [WarehouseController::class, 'store']);
+Route::put('/warehouses/{warehouse}', [WarehouseController::class, 'update']);
+Route::delete('/warehouses/{warehouse}', [WarehouseController::class, 'destroy']);
+Route::post('/warehouses/{warehouse}/set-default', [WarehouseController::class, 'setDefault']);
 
 // Heartbeat & offline presence routes (Public & Auth)
+Route::get('/delegates/filter-options', [DelegateController::class, 'filterOptions']);
 Route::post('/delegates/heartbeat', [DelegateController::class, 'heartbeat']);
 Route::post('/delegates/offline', [DelegateController::class, 'offline']);
 
@@ -97,6 +104,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::get('/auth/me', [AuthController::class, 'me']);
     Route::put('/auth/profile', [AuthController::class, 'profile']);
+
+    Route::get('/warehouses', [WarehouseController::class, 'index']);
+    Route::post('/warehouses', [WarehouseController::class, 'store']);
+    Route::put('/warehouses/{warehouse}', [WarehouseController::class, 'update']);
+    Route::delete('/warehouses/{warehouse}', [WarehouseController::class, 'destroy']);
+    Route::post('/warehouses/{warehouse}/set-default', [WarehouseController::class, 'setDefault']);
 
     Route::get('/stock/kpis', [StockController::class, 'kpis']);
     Route::get('/stock/analytics', [StockController::class, 'analytics']);
@@ -110,6 +123,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/clients/bulk', [ClientController::class, 'bulkAction']);
     Route::apiResource('/clients', ClientController::class);
 
+    Route::get('/delegates/filter-options', [DelegateController::class, 'filterOptions']);
     Route::get('/delegates/kpis', [DelegateController::class, 'kpis']);
     Route::get('/delegates/analytics', [DelegateController::class, 'analytics']);
     Route::post('/delegates/bulk', [DelegateController::class, 'bulkAction']);

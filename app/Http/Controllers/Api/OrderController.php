@@ -272,9 +272,13 @@ class OrderController extends Controller
      */
     public function show($id)
     {
+        // Enforce UUID only: commande numbers/codes are not accepted as route IDs
+        if (!\Illuminate\Support\Str::isUuid($id)) {
+            return response()->json(['message' => 'Order not found. Only order UUID is accepted.'], 404);
+        }
+
         $order = Order::with(['items.product', 'client', 'delegate', 'validationLogs'])
             ->where('id', $id)
-            ->orWhere('order_code', $id)
             ->first();
 
         if (!$order) {
@@ -531,7 +535,7 @@ class OrderController extends Controller
                     'user' => $delegateName,
                     'region' => $region,
                     'module' => 'Orders',
-                    'reference_id' => $orderCode,
+                    'reference_id' => $order->id,
                     'read' => false,
                 ]);
             } catch (\Throwable $e) {
