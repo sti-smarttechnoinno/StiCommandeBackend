@@ -1,6 +1,13 @@
 pipeline {
     agent any
 
+    triggers {
+        // Automatically check GitHub every 2 minutes for new commits (works on local network 192.168.x.x)
+        pollSCM('H/2 * * * *')
+        // Instant trigger if GitHub webhook is active
+        githubPush()
+    }
+
     options {
         timeout(time: 30, unit: 'MINUTES')
         buildDiscarder(logRotator(numToKeepStr: '10', artifactNumToKeepStr: '10'))
@@ -197,47 +204,60 @@ pipeline {
         stage('Deploy') {
             steps {
                 script {
-                    if (env.DEPLOY_STRATEGY == 'docker-compose') {
-                        echo "--> Deploying via Docker Compose..."
-                        dir("${env.APP_DIR}") {
-                            sh '''
-                                if [ -f docker-compose.yml ]; then
-                                    docker compose down --remove-orphans || true
-                                    docker compose up -d --build
-                                    docker compose ps
-                                else
-                                    echo "docker-compose.yml not found, skipping compose deploy."
-                                fi
-                            '''
-                        }
-                    } else if (env.DEPLOY_STRATEGY == 'docker-run') {
-                        echo "--> Deploying standalone Docker container..."
+                    dir("${env.APP_DIR}") {
+                        echo "--> Synchronizing updated code to ${DEPLOY_PATH}..."
                         sh """
-                            # Stop and remove existing running container
-                            docker stop ${CONTAINER_NAME} || true
-                            docker rm -f ${CONTAINER_NAME} || true
+                            # Ensure deploy directory exists
+                            sudo mkdir -p ${DEPLOY_PATH}
+                            sudo chown -R \$(whoami): ${DEPLOY_PATH} || true
 
-                            # Run new production container
-                            docker run -d \
-                                --name ${CONTAINER_NAME} \
-                                --restart unless-stopped \
-                                -p ${CONTAINER_PORT}:80 \
-                                -p ${WS_PORT}:8085 \
-                                -v sticommande_storage:/var/www/html/storage \
-                                --env-file ${DEPLOY_PATH}/.env \
-                                ${IMAGE_NAME}:latest
+                            # Synchronize code to /var/www/commande/backend while protecting .env and storage
+                            rsync -av --delete \
+                                --exclude=".git" \
+                                --exclude=".env" \
+                                --exclude="storage" \
+                                ./ ${DEPLOY_PATH}/
 
-                            echo "--> Deployment active on port ${CONTAINER_PORT} (Web) and ${WS_PORT} (WebSockets)."
+                            # Ensure proper Laravel storage directories & permissions exist on server
+                            mkdir -p ${DEPLOY_PATH}/storage/framework/{cache/data,sessions,views}
+                            mkdir -p ${DEPLOY_PATH}/storage/logs
+                            mkdir -p ${DEPLOY_PATH}/bootstrap/cache
+                            chmod -R 775 ${DEPLOY_PATH}/storage ${DEPLOY_PATH}/bootstrap/cache
+                            sudo chown -R www-data:www-data ${DEPLOY_PATH}/storage ${DEPLOY_PATH}/bootstrap/cache || true
                         """
-                    } else if (env.DEPLOY_STRATEGY == 'rsync') {
-                        echo "--> Deploying via legacy Rsync..."
-                        dir("${env.APP_DIR}") {
+
+                        if (env.DEPLOY_STRATEGY == 'docker-compose') {
+                            echo "--> Deploying via Docker Compose inside ${DEPLOY_PATH}..."
                             sh """
-                                rsync -a --exclude=".env" --exclude="storage" ./ ${DEPLOY_PATH}/
                                 cd ${DEPLOY_PATH}
-                                php artisan migrate --force
-                                php artisan config:cache
-                                php artisan route:cache
+                                docker compose down --remove-orphans || true
+                                docker compose up -d --build
+                                docker compose ps
+                            """
+                        } else if (env.DEPLOY_STRATEGY == 'docker-run') {
+                            echo "--> Deploying standalone Docker container from ${DEPLOY_PATH}..."
+                            sh """
+                                docker stop ${CONTAINER_NAME} || true
+                                docker rm -f ${CONTAINER_NAME} || true
+
+                                docker run -d \
+                                    --name ${CONTAINER_NAME} \
+                                    --restart unless-stopped \
+                                    -p ${CONTAINER_PORT}:80 \
+                                    -p ${WS_PORT}:8085 \
+                                    -v ${DEPLOY_PATH}/storage:/var/www/html/storage \
+                                    --env-file ${DEPLOY_PATH}/.env \
+                                    ${IMAGE_NAME}:latest
+
+                                echo "--> Deployment active on port ${CONTAINER_PORT} (Web) and ${WS_PORT} (WebSockets)."
+                            """
+                        } else if (env.DEPLOY_STRATEGY == 'rsync') {
+                            echo "--> Executing host post-deploy hooks in ${DEPLOY_PATH}..."
+                            sh """
+                                cd ${DEPLOY_PATH}
+                                php artisan migrate --force || true
+                                php artisan config:cache || true
+                                php artisan route:cache || true
                                 sudo supervisorctl restart all || true
                                 sudo systemctl restart php8.5-fpm || true
                             """

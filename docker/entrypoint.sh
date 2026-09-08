@@ -4,14 +4,14 @@ set -e
 echo "=== Initializing StiCommande Backend Container ==="
 
 # Ensure directories exist
-mkdir -p /var/www/html/storage/framework/{cache/data,sessions,views}
-mkdir -p /var/www/html/storage/logs
-mkdir -p /var/www/html/bootstrap/cache
+mkdir -p /var/www/commande/backend/storage/framework/{cache/data,sessions,views}
+mkdir -p /var/www/commande/backend/storage/logs
+mkdir -p /var/www/commande/backend/bootstrap/cache
 mkdir -p /run/nginx
 
 # Ensure correct permissions
-chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
-chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
+chown -R www-data:www-data /var/www/commande/backend/storage /var/www/commande/backend/bootstrap/cache
+chmod -R 775 /var/www/commande/backend/storage /var/www/commande/backend/bootstrap/cache
 
 # Generate application key if not set
 if [ -z "$APP_KEY" ]; then

@@ -52,7 +52,7 @@ FROM docker.io/library/php:${PHP_VERSION}-fpm-alpine
 LABEL maintainer="StiCommande DevOps Team"
 LABEL description="Production Docker image for StiCommande Backend (PHP 8.5 + Laravel + Nginx + WebSockets)"
 
-WORKDIR /var/www/html
+WORKDIR /var/www/commande/backend
 
 # Install runtime packages, Nginx, Supervisor, Node.js and build dependencies
 RUN apk add --no-cache \
@@ -112,26 +112,26 @@ COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 # Copy application source code
-COPY . /var/www/html
+COPY . /var/www/commande/backend
 
 # Copy pre-built vendor packages from composer_builder
-COPY --from=composer_builder /app/vendor /var/www/html/vendor
+COPY --from=composer_builder /app/vendor /var/www/commande/backend/vendor
 
 # Copy compiled public assets and production node modules from node_builder
-COPY --from=node_builder /app/public/build /var/www/html/public/build
-COPY --from=node_builder /app/node_modules /var/www/html/node_modules
+COPY --from=node_builder /app/public/build /var/www/commande/backend/public/build
+COPY --from=node_builder /app/node_modules /var/www/commande/backend/node_modules
 
 # Prepare directory structure, run discovery, and set permissions
 RUN mkdir -p \
-    /var/www/html/storage/framework/cache/data \
-    /var/www/html/storage/framework/sessions \
-    /var/www/html/storage/framework/views \
-    /var/www/html/storage/logs \
-    /var/www/html/bootstrap/cache \
+    /var/www/commande/backend/storage/framework/cache/data \
+    /var/www/commande/backend/storage/framework/sessions \
+    /var/www/commande/backend/storage/framework/views \
+    /var/www/commande/backend/storage/logs \
+    /var/www/commande/backend/bootstrap/cache \
     /run/nginx \
     /var/log/supervisor \
-    && chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache \
-    && chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
+    && chown -R www-data:www-data /var/www/commande/backend/storage /var/www/commande/backend/bootstrap/cache \
+    && chmod -R 775 /var/www/commande/backend/storage /var/www/commande/backend/bootstrap/cache
 
 # Expose HTTP port (80) and WebSocket Hub port (8085)
 EXPOSE 80 8085
