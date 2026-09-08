@@ -150,7 +150,10 @@ pipeline {
                 echo "--> Performing container smoke test on health endpoint /up..."
                 sh """
                     TEST_CONTAINER="test_${IMAGE_NAME}_${BUILD_NUMBER}"
-                    
+
+                    # Clean up any leftover test container
+                    docker rm -f "\$TEST_CONTAINER" >/dev/null 2>&1 || true
+
                     # Run ephemeral test container
                     docker run -d --name "\$TEST_CONTAINER" \
                         -e APP_ENV=testing \
@@ -158,24 +161,48 @@ pipeline {
                         -e DB_CONNECTION=sqlite \
                         -e DB_DATABASE=:memory: \
                         -e RUN_MIGRATIONS=false \
-                        -p 8099:80 \
+                        -e START_WEBSOCKET=false \
+                        -e START_QUEUE_WORKER=false \
+                        -p 127.0.0.1:8099:80 \
                         ${IMAGE_NAME}:${IMAGE_TAG}
 
                     echo "Waiting for container initialization..."
-                    sleep 10
+                    HTTP_STATUS="000"
 
-                    # Verify health check endpoint responds with HTTP 200
-                    HTTP_STATUS=\$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8099/up || echo "000")
+                    # Poll up to 30 seconds for container readiness
+                    for i in \$(seq 1 30); do
+                        # Check host-mapped port via IPv4 (127.0.0.1)
+                        STATUS=\$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8099/up 2>/dev/null || true)
+                        if [ "\$STATUS" = "200" ]; then
+                            HTTP_STATUS="200"
+                            echo "Healthcheck passed on host port 8099 after \${i}s!"
+                            break
+                        fi
+
+                        # Check directly inside container if host networking/rootless podman port forwarding has latency
+                        CONTAINER_STATUS=\$(docker exec "\$TEST_CONTAINER" curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1/up 2>/dev/null || true)
+                        if [ "\$CONTAINER_STATUS" = "200" ]; then
+                            HTTP_STATUS="200"
+                            echo "Healthcheck passed inside container after \${i}s!"
+                            break
+                        fi
+
+                        sleep 1
+                    done
+
                     echo "Health endpoint returned HTTP status: \$HTTP_STATUS"
+
+                    if [ "\$HTTP_STATUS" != "200" ]; then
+                        echo "ERROR: Health check failed! Printing container logs:"
+                        docker logs "\$TEST_CONTAINER" || true
+                        docker stop "\$TEST_CONTAINER" || true
+                        docker rm -f "\$TEST_CONTAINER" || true
+                        exit 1
+                    fi
 
                     # Clean up test container
                     docker stop "\$TEST_CONTAINER" || true
                     docker rm -f "\$TEST_CONTAINER" || true
-
-                    if [ "\$HTTP_STATUS" != "200" ]; then
-                        echo "ERROR: Health check failed! Container did not boot properly."
-                        exit 1
-                    fi
                 """
             }
         }

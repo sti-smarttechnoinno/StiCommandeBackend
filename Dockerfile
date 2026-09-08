@@ -142,5 +142,12 @@ EXPOSE 80 8085
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
     CMD curl -f http://localhost/up || exit 1
 
+# Default supervisor daemon environment variables
+ENV START_WEBSOCKET=true \
+    START_QUEUE_WORKER=false
+
+# Use SIGTERM so supervisord shuts down gracefully without 10s SIGQUIT timeout
+STOPSIGNAL SIGTERM
+
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

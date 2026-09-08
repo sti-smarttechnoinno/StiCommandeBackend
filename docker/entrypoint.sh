@@ -13,6 +13,10 @@ mkdir -p /run/nginx
 chown -R www-data:www-data /var/www/commande/backend/storage /var/www/commande/backend/bootstrap/cache
 chmod -R 775 /var/www/commande/backend/storage /var/www/commande/backend/bootstrap/cache
 
+# Export runtime flags with sensible defaults for supervisor
+export START_WEBSOCKET="${START_WEBSOCKET:-true}"
+export START_QUEUE_WORKER="${START_QUEUE_WORKER:-false}"
+
 # Generate application key if not set
 if [ -z "$APP_KEY" ]; then
     echo "Notice: APP_KEY not provided. Generating application key..."
@@ -33,9 +37,7 @@ if [ "${APP_ENV:-production}" = "production" ]; then
     php artisan view:cache || true
 else
     echo "Running in ${APP_ENV:-development} mode, clearing caches..."
-    php artisan config:clear || true
-    php artisan route:clear || true
-    php artisan view:clear || true
+    php artisan optimize:clear || true
 fi
 
 echo "=== StiCommande Backend Ready. Starting services ==="

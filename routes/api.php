@@ -79,6 +79,7 @@ Route::get('/categories', [CategoryController::class, 'index']);
 // Orders public access / fallback
 Route::get('/clients/filter-options', [ClientController::class, 'filterOptions']);
 Route::get('/orders/kpis', [OrderController::class, 'kpis']);
+Route::get('/profile/kpis', [OrderController::class, 'profileKpis']);
 Route::get('/orders/stream', [OrderController::class, 'stream']);
 Route::get('/orders', [OrderController::class, 'index']);
 Route::get('/orders/{id}', [OrderController::class, 'show']);
@@ -117,6 +118,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/stock/movements', [StockController::class, 'index']);
     Route::post('/stock/movements', [StockController::class, 'store']);
 
+    Route::get('/orders/kpis', [OrderController::class, 'kpis']);
+    Route::get('/profile/kpis', [OrderController::class, 'profileKpis']);
     Route::get('/clients/filter-options', [ClientController::class, 'filterOptions']);
     Route::get('/clients/kpis', [ClientController::class, 'kpis']);
     Route::get('/clients/analytics', [ClientController::class, 'analytics']);

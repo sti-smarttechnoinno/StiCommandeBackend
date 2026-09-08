@@ -11,6 +11,7 @@ use App\Models\Category;
 use App\Models\OrderValidationLog;
 use App\Models\StockMovement;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -104,39 +105,65 @@ class OrderController extends Controller
     /**
      * Get KPI summary analytics for orders.
      */
-    public function kpis()
+    public function kpis(?Request $request = null)
     {
-        $totalOrders = Order::count();
-        $pendingOrders = Order::where('status', 'pending')->count();
-        $validatedOrders = Order::whereIn('status', ['validated', 'partially_validated'])->count();
-        $deliveringOrders = Order::where('status', 'preparing')->count();
-        $deliveredOrders = Order::where('status', 'delivered')->count();
-        $totalRevenue = (float) Order::whereNotIn('status', ['cancelled', 'rejected'])->sum('total_amount');
+        $delegateId = $request?->query('delegate_id');
+        if (!$delegateId && $request?->user() && $request->user()->role === 'delegate') {
+            $delegateId = $request->user()->id;
+        }
 
-        $balance = (float) Order::whereMonth('created_at', now()->month)
+        $orderQuery = Order::query();
+        if ($delegateId) {
+            $delegateName = User::where('id', $delegateId)->value('name');
+            $hasSpecific = (clone $orderQuery)->where(function ($q) use ($delegateId, $delegateName) {
+                $q->where('delegate_id', $delegateId);
+                if ($delegateName) {
+                    $q->orWhere('delegate_name', $delegateName);
+                }
+            })->exists();
+
+            if ($hasSpecific) {
+                $orderQuery->where(function ($q) use ($delegateId, $delegateName) {
+                    $q->where('delegate_id', $delegateId);
+                    if ($delegateName) {
+                        $q->orWhere('delegate_name', $delegateName);
+                    }
+                });
+            }
+        }
+
+        $totalOrders = (clone $orderQuery)->count();
+        $pendingOrders = (clone $orderQuery)->where('status', 'pending')->count();
+        $validatedOrders = (clone $orderQuery)->whereIn('status', ['validated', 'partially_validated'])->count();
+        $deliveringOrders = (clone $orderQuery)->where('status', 'preparing')->count();
+        $deliveredOrders = (clone $orderQuery)->where('status', 'delivered')->count();
+        $totalRevenue = (float) (clone $orderQuery)->whereNotIn('status', ['cancelled', 'rejected'])->sum('total_amount');
+
+        $balance = (float) (clone $orderQuery)->whereMonth('created_at', now()->month)
             ->whereYear('created_at', now()->year)
             ->whereNotIn('status', ['cancelled', 'rejected'])
             ->sum('total_amount');
-        $monthlyOrdersCount = Order::whereMonth('created_at', now()->month)
+        $monthlyOrdersCount = (clone $orderQuery)->whereMonth('created_at', now()->month)
             ->whereYear('created_at', now()->year)
             ->whereNotIn('status', ['cancelled', 'rejected'])
             ->count();
 
-        $productsOrdered = (int) OrderItem::sum('quantity');
+        $orderIds = (clone $orderQuery)->pluck('id');
+        $productsOrdered = (int) OrderItem::whereIn('order_id', $orderIds)->sum('quantity');
 
         // Growth calculation comparing today vs yesterday
         $todayStart = now()->startOfDay();
         $yesterdayStart = now()->subDay()->startOfDay();
         $yesterdayEnd = now()->subDay()->endOfDay();
 
-        $todayOrders = Order::where('created_at', '>=', $todayStart)->count();
-        $yesterdayOrders = Order::whereBetween('created_at', [$yesterdayStart, $yesterdayEnd])->count();
+        $todayOrders = (clone $orderQuery)->where('created_at', '>=', $todayStart)->count();
+        $yesterdayOrders = (clone $orderQuery)->whereBetween('created_at', [$yesterdayStart, $yesterdayEnd])->count();
         $ordersGrowth = $yesterdayOrders > 0 
             ? round((($todayOrders - $yesterdayOrders) / $yesterdayOrders) * 100, 1) 
             : 0.0;
 
-        $todayRevenue = (float) Order::where('created_at', '>=', $todayStart)->whereNotIn('status', ['cancelled', 'rejected'])->sum('total_amount');
-        $yesterdayRevenue = (float) Order::whereBetween('created_at', [$yesterdayStart, $yesterdayEnd])->whereNotIn('status', ['cancelled', 'rejected'])->sum('total_amount');
+        $todayRevenue = (float) (clone $orderQuery)->where('created_at', '>=', $todayStart)->whereNotIn('status', ['cancelled', 'rejected'])->sum('total_amount');
+        $yesterdayRevenue = (float) (clone $orderQuery)->whereBetween('created_at', [$yesterdayStart, $yesterdayEnd])->whereNotIn('status', ['cancelled', 'rejected'])->sum('total_amount');
         $revenueGrowth = $yesterdayRevenue > 0 
             ? round((($todayRevenue - $yesterdayRevenue) / $yesterdayRevenue) * 100, 1) 
             : 0.0;
@@ -198,14 +225,17 @@ class OrderController extends Controller
             9 => 'Septembre', 10 => 'Octobre', 11 => 'Novembre', 12 => 'Décembre',
         ];
 
-        $delegateObjective = \App\Models\DelegateObjective::where('year', $currentYear)
-            ->where('month', $currentMonth)
-            ->first();
+        $delegateObjectiveQuery = \App\Models\DelegateObjective::where('year', $currentYear)
+            ->where('month', $currentMonth);
+        if ($delegateId) {
+            $delegateObjectiveQuery->where('user_id', $delegateId);
+        }
+        $delegateObjective = $delegateObjectiveQuery->first();
 
         $monthStartDate = now()->startOfMonth();
         $monthEndDate = now()->endOfMonth();
 
-        $monthlyOrders = Order::whereBetween('created_at', [$monthStartDate, $monthEndDate])
+        $monthlyOrders = (clone $orderQuery)->whereBetween('created_at', [$monthStartDate, $monthEndDate])
             ->whereNotIn('status', ['cancelled', 'rejected'])
             ->with(['items.product'])
             ->get();
@@ -232,6 +262,8 @@ class OrderController extends Controller
             ? round(($achievedMonthlyRevenue / $targetRevenue) * 100, 1)
             : ($achievedMonthlyRevenue > 0 ? 100.0 : 0.0);
 
+        $isConfigured = ($delegateObjective !== null && $targetRevenue > 0);
+
         $objectivePayload = [
             'monthName' => ($monthNamesFr[$currentMonth] ?? "Mois $currentMonth") . " $currentYear",
             'targetRevenue' => $targetRevenue,
@@ -240,19 +272,41 @@ class OrderController extends Controller
             'revenuePercentage' => $revenuePercentage,
             'targetOrders' => $targetOrders,
             'achievedOrders' => $achievedMonthlyOrders,
-            'isConfigured' => ($delegateObjective !== null && $targetRevenue > 0),
+            'isConfigured' => $isConfigured,
         ];
+
+        $activeClients = \App\Models\Client::where('status', 'active')->count();
+        $totalClients = \App\Models\Client::count();
+        $completedOrValidated = $validatedOrders + $deliveredOrders;
+        $successRate = $totalOrders > 0
+            ? round(($completedOrValidated / $totalOrders) * 100, 1)
+            : 0.0;
+        $commissions = round($balance * 0.025, 2);
+        $performancePercent = $isConfigured ? $revenuePercentage : 0.0;
+        $performanceLabel = $isConfigured
+            ? ($performancePercent >= 90 ? 'Excellente' : ($performancePercent >= 70 ? 'Bonne' : ($performancePercent >= 50 ? 'Moyenne' : 'À améliorer')))
+            : 'Non défini';
 
         return response()->json([
             'totalOrders' => $totalOrders,
+            'todayOrders' => $todayOrders,
             'pendingOrders' => $pendingOrders,
             'validatedOrders' => $validatedOrders,
             'deliveringOrders' => $deliveringOrders,
             'deliveredOrders' => $deliveredOrders,
             'totalRevenue' => $totalRevenue,
+            'todayRevenue' => $todayRevenue,
             'balance' => $balance,
             'monthlyOrdersCount' => $monthlyOrdersCount,
             'productsOrdered' => $productsOrdered,
+            'activeClients' => $activeClients,
+            'totalClients' => $totalClients,
+            'successRate' => $successRate,
+            'commissions' => $commissions,
+            'performancePercent' => $performancePercent,
+            'monthlyTarget' => $targetRevenue,
+            'monthlyAchieved' => round($achievedMonthlyRevenue, 2),
+            'hasObjective' => $isConfigured,
             'objective' => $objectivePayload,
             'ordersGrowth' => $ordersGrowth,
             'revenueGrowth' => $revenueGrowth,
@@ -265,6 +319,14 @@ class OrderController extends Controller
             'validatedSparkline' => $validatedSparkline,
             'deliveredSparkline' => $deliveredSparkline,
         ]);
+    }
+
+    /**
+     * Dedicated Profile / Delegate KPIs endpoint for mobile app.
+     */
+    public function profileKpis(Request $request): JsonResponse
+    {
+        return $this->kpis($request);
     }
 
     /**
@@ -435,7 +497,7 @@ class OrderController extends Controller
                             if ($dbProduct->stock_quantity < $quantity) {
                                 DB::rollBack();
                                 return response()->json([
-                                    'message' => "Stock insuffisant pour le produit \"{$dbProduct->name}\". Stock disponible : {$dbProduct->stock_quantity}",
+                                    'message' => "Stock insuffisant pour le produit \"{$dbProduct->name}\".",
                                     'errors' => ['stock' => ["Stock insuffisant pour {$dbProduct->name}"]],
                                 ], 400);
                             }
