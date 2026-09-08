@@ -125,6 +125,8 @@ pipeline {
                         TEST_PG_CONTAINER="pg_test_${BUILD_NUMBER}"
                         echo "--> Cleaning up ephemeral PostgreSQL test container..."
                         docker rm -f "\$TEST_PG_CONTAINER" || true
+                        echo "--> Cleaning up test bootstrap cache..."
+                        rm -f ${env.APP_DIR}/bootstrap/cache/*.php || true
                     """
                 }
             }

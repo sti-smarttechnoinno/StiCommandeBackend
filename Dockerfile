@@ -123,8 +123,9 @@ COPY --from=composer_builder /app/vendor /var/www/commande/backend/vendor
 COPY --from=node_builder /app/public/build /var/www/commande/backend/public/build
 COPY --from=node_builder /app/node_modules /var/www/commande/backend/node_modules
 
-# Prepare directory structure, run discovery, and set permissions
-RUN mkdir -p \
+# Prepare directory structure, clean stale cache, and set permissions
+RUN rm -rf /var/www/commande/backend/bootstrap/cache/*.php \
+    && mkdir -p \
     /var/www/commande/backend/storage/framework/cache/data \
     /var/www/commande/backend/storage/framework/sessions \
     /var/www/commande/backend/storage/framework/views \
@@ -132,8 +133,10 @@ RUN mkdir -p \
     /var/www/commande/backend/bootstrap/cache \
     /run/nginx \
     /var/log/supervisor \
+    && touch /var/www/commande/backend/storage/logs/laravel.log \
     && chown -R www-data:www-data /var/www/commande/backend/storage /var/www/commande/backend/bootstrap/cache \
-    && chmod -R 775 /var/www/commande/backend/storage /var/www/commande/backend/bootstrap/cache
+    && chmod -R 775 /var/www/commande/backend/storage /var/www/commande/backend/bootstrap/cache \
+    && chmod -R 777 /var/www/commande/backend/storage/logs
 
 # Expose HTTP port (80) and WebSocket Hub port (8085)
 EXPOSE 80 8085

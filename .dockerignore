@@ -12,6 +12,14 @@ storage/logs/*
 storage/framework/cache/*
 storage/framework/sessions/*
 storage/framework/views/*
+storage/*.key
+storage/pail
+bootstrap/cache/*
+!bootstrap/cache/.gitignore
+.phpunit.cache
+.phpunit.result.cache
+database/*.sqlite
+database/*.sqlite-journal
 tests
 docker-compose*.yml
 Dockerfile
