@@ -237,63 +237,91 @@ pipeline {
             steps {
                 script {
                     dir("${env.APP_DIR}") {
-                        echo "--> Synchronizing updated code to ${env.DEPLOY_PATH}..."
                         sh """
-                            # Ensure deploy directory exists
-                            sudo mkdir -p ${env.DEPLOY_PATH}
-                            sudo chown -R \$(whoami): ${env.DEPLOY_PATH} || true
+                            # Detect if non-interactive sudo is available
+                            SUDO=""
+                            if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+                                SUDO="sudo -n"
+                            fi
 
-                            # Synchronize code to /var/www/commande/backend while protecting .env and storage
-                            rsync -av --delete \
-                                --exclude=".git" \
-                                --exclude=".env" \
-                                --exclude="storage" \
-                                ./ ${env.DEPLOY_PATH}/
+                            TARGET_DIR="${env.DEPLOY_PATH}"
 
-                            # Ensure proper Laravel storage directories & permissions exist on server
-                            mkdir -p ${env.DEPLOY_PATH}/storage/framework/{cache/data,sessions,views}
-                            mkdir -p ${env.DEPLOY_PATH}/storage/logs
-                            mkdir -p ${env.DEPLOY_PATH}/bootstrap/cache
-                            chmod -R 775 ${env.DEPLOY_PATH}/storage ${env.DEPLOY_PATH}/bootstrap/cache
-                            sudo chown -R www-data:www-data ${env.DEPLOY_PATH}/storage ${env.DEPLOY_PATH}/bootstrap/cache || true
-                        """
+                            # Determine if target DEPLOY_PATH is writable or can be created
+                            CAN_USE_DEPLOY_PATH=false
+                            if [ -d "\$TARGET_DIR" ] && [ -w "\$TARGET_DIR" ]; then
+                                CAN_USE_DEPLOY_PATH=true
+                            elif mkdir -p "\$TARGET_DIR" 2>/dev/null; then
+                                CAN_USE_DEPLOY_PATH=true
+                            elif [ -n "\$SUDO" ] && \$SUDO mkdir -p "\$TARGET_DIR" 2>/dev/null; then
+                                \$SUDO chown -R \$(whoami): "\$TARGET_DIR" 2>/dev/null || true
+                                CAN_USE_DEPLOY_PATH=true
+                            fi
 
-                        if (env.DEPLOY_STRATEGY == 'docker-compose') {
-                            echo "--> Deploying via Docker Compose inside ${env.DEPLOY_PATH}..."
-                            sh """
-                                cd ${env.DEPLOY_PATH}
+                            if [ "\$CAN_USE_DEPLOY_PATH" = "true" ]; then
+                                echo "--> Synchronizing updated code to \$TARGET_DIR..."
+                                rsync -av --delete \
+                                    --exclude=".git" \
+                                    --exclude=".env" \
+                                    --exclude="storage" \
+                                    ./ "\$TARGET_DIR"/
+
+                                # Ensure proper Laravel storage directories & permissions exist on server
+                                mkdir -p "\$TARGET_DIR"/storage/framework/{cache/data,sessions,views}
+                                mkdir -p "\$TARGET_DIR"/storage/logs
+                                mkdir -p "\$TARGET_DIR"/bootstrap/cache
+                                chmod -R 775 "\$TARGET_DIR"/storage "\$TARGET_DIR"/bootstrap/cache 2>/dev/null || true
+                                if [ -n "\$SUDO" ]; then
+                                    \$SUDO chown -R www-data:www-data "\$TARGET_DIR"/storage "\$TARGET_DIR"/bootstrap/cache 2>/dev/null || true
+                                fi
+                            else
+                                echo "Notice: Cannot write to \$TARGET_DIR and passwordless sudo is unavailable for user '\$(whoami)'."
+                                echo "--> Deploying directly from workspace directory: \$(pwd)"
+                                TARGET_DIR="\$(pwd)"
+                            fi
+
+                            if [ "${env.DEPLOY_STRATEGY}" = "docker-compose" ]; then
+                                echo "--> Deploying via Docker Compose inside \$TARGET_DIR..."
+                                cd "\$TARGET_DIR"
                                 docker compose down --remove-orphans || true
-                                docker compose up -d --build
+                                docker compose up -d
                                 docker compose ps
-                            """
-                        } else if (env.DEPLOY_STRATEGY == 'docker-run') {
-                            echo "--> Deploying standalone Docker container from ${env.DEPLOY_PATH}..."
-                            sh """
+                            elif [ "${env.DEPLOY_STRATEGY}" = "docker-run" ]; then
+                                echo "--> Deploying standalone Docker container from \$TARGET_DIR..."
                                 docker stop ${env.CONTAINER_NAME} || true
                                 docker rm -f ${env.CONTAINER_NAME} || true
+
+                                ENV_FILE_ARG=""
+                                if [ -f "\$TARGET_DIR/.env" ]; then
+                                    ENV_FILE_ARG="--env-file \$TARGET_DIR/.env"
+                                fi
 
                                 docker run -d \
                                     --name ${env.CONTAINER_NAME} \
                                     --restart unless-stopped \
                                     -p ${env.CONTAINER_PORT}:80 \
                                     -p ${env.WS_PORT}:8085 \
-                                    -v ${env.DEPLOY_PATH}/storage:/var/www/html/storage \
-                                    --env-file ${env.DEPLOY_PATH}/.env \
+                                    -v sticommande_backend_storage:/var/www/commande/backend/storage \
+                                    \$ENV_FILE_ARG \
                                     ${env.IMAGE_NAME}:latest
 
                                 echo "--> Deployment active on port ${env.CONTAINER_PORT} (Web) and ${env.WS_PORT} (WebSockets)."
-                            """
-                        } else if (env.DEPLOY_STRATEGY == 'rsync') {
-                            echo "--> Executing host post-deploy hooks in ${env.DEPLOY_PATH}..."
-                            sh """
-                                cd ${env.DEPLOY_PATH}
+                            elif [ "${env.DEPLOY_STRATEGY}" = "rsync" ]; then
+                                if [ "\$CAN_USE_DEPLOY_PATH" != "true" ]; then
+                                    echo "ERROR: DEPLOY_STRATEGY is 'rsync' but \$TARGET_DIR is not writable."
+                                    echo "Please run on the server: sudo mkdir -p ${env.DEPLOY_PATH} && sudo chown -R \$(whoami): ${env.DEPLOY_PATH}"
+                                    exit 1
+                                fi
+                                echo "--> Executing host post-deploy hooks in \$TARGET_DIR..."
+                                cd "\$TARGET_DIR"
                                 php artisan migrate --force || true
                                 php artisan config:cache || true
                                 php artisan route:cache || true
-                                sudo supervisorctl restart all || true
-                                sudo systemctl restart php8.5-fpm || true
-                            """
-                        }
+                                if [ -n "\$SUDO" ]; then
+                                    \$SUDO supervisorctl restart all || true
+                                    \$SUDO systemctl restart php8.5-fpm || true
+                                fi
+                            fi
+                        """
                     }
                 }
             }
