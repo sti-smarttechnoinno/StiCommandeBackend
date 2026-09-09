@@ -47,7 +47,9 @@ if [ "${APP_ENV:-production}" = "production" ]; then
     php artisan view:cache || true
 else
     echo "Running in ${APP_ENV:-development} mode, clearing caches..."
-    php artisan optimize:clear || true
+    php artisan config:clear || true
+    php artisan route:clear || true
+    php artisan view:clear || true
 fi
 
 # Re-apply ownership and permissions to ensure all files created by artisan are accessible by www-data
@@ -55,6 +57,10 @@ touch /var/www/commande/backend/storage/logs/laravel.log
 chown -R www-data:www-data /var/www/commande/backend/storage /var/www/commande/backend/bootstrap/cache
 chmod -R 775 /var/www/commande/backend/storage /var/www/commande/backend/bootstrap/cache
 chmod -R 777 /var/www/commande/backend/storage/logs
+
+# Validate Nginx and PHP-FPM configurations
+nginx -t || { echo "ERROR: Nginx configuration test failed!"; exit 1; }
+php-fpm -t || { echo "ERROR: PHP-FPM configuration test failed!"; exit 1; }
 
 echo "=== StiCommande Backend Ready. Starting services ==="
 exec "$@"

@@ -162,6 +162,9 @@ pipeline {
                         -e APP_KEY=base64:Sm9obkRvZUlzQUZha2VLZXlGb3JUZXN0aW5nMTIzNDU= \
                         -e DB_CONNECTION=sqlite \
                         -e DB_DATABASE=:memory: \
+                        -e CACHE_STORE=array \
+                        -e SESSION_DRIVER=array \
+                        -e QUEUE_CONNECTION=sync \
                         -e RUN_MIGRATIONS=false \
                         -e START_WEBSOCKET=false \
                         -e START_QUEUE_WORKER=false \
