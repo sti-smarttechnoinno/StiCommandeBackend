@@ -260,9 +260,12 @@ pipeline {
                             if [ "\$CAN_USE_DEPLOY_PATH" = "true" ]; then
                                 echo "--> Synchronizing updated code to \$TARGET_DIR..."
                                 rsync -av --delete \
+                                    --no-owner \
+                                    --no-group \
                                     --exclude=".git" \
                                     --exclude=".env" \
                                     --exclude="storage" \
+                                    --exclude="node_modules" \
                                     ./ "\$TARGET_DIR"/
 
                                 # Ensure proper Laravel storage directories & permissions exist on server
