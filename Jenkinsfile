@@ -262,9 +262,11 @@ pipeline {
                                 rsync -av --delete \
                                     --no-owner \
                                     --no-group \
+                                    --no-perms \
                                     --exclude=".git" \
                                     --exclude=".env" \
                                     --exclude="storage" \
+                                    --exclude="vendor" \
                                     --exclude="node_modules" \
                                     ./ "\$TARGET_DIR"/
 
