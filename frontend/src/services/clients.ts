@@ -9,8 +9,8 @@ export interface ClientData {
   address: string;
   region: string;
   wilaya: string;
-  delegateId?: string;
-  delegateName?: string;
+  delegateId?: string | null;
+  delegateName?: string | null;
   clientType: 'retail' | 'wholesale' | 'corporate' | 'government';
   status: 'active' | 'inactive' | 'pending' | 'blocked';
   creditLimit: number;
@@ -18,7 +18,7 @@ export interface ClientData {
   totalOrders: number;
   totalSpent: number;
   lastOrderDate?: string;
-  notes?: string;
+  notes?: string | null;
   createdAt: string;
   objective?: {
     isConfigured: boolean;
@@ -29,6 +29,29 @@ export interface ClientData {
     achievedOrders: number;
     monthName?: string;
   };
+}
+
+export interface ClientImportColumn {
+  key: string;
+  label: string;
+  sample?: string;
+}
+
+export interface ClientImportPreviewResponse {
+  file_token: string;
+  total_rows: number;
+  columns: ClientImportColumn[];
+  preview_rows: Record<string, any>[];
+  suggested_mapping: Record<string, string>;
+}
+
+export interface ClientImportResult {
+  total_rows: number;
+  created_count: number;
+  updated_count: number;
+  skipped_count: number;
+  errors_count: number;
+  errors: { line: number; error: string }[];
 }
 
 interface ClientsResponse {
@@ -207,5 +230,54 @@ export const clientsService = {
 
   async bulkAction(ids: string[], action: string, delegateId?: string): Promise<void> {
     await api.post('/clients/bulk', { ids, action, delegate_id: delegateId });
+  },
+
+  async importPreview(file: File): Promise<ClientImportPreviewResponse> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const { data } = await api.post<{ data: ClientImportPreviewResponse }>('/clients/import-preview', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return data.data;
+  },
+
+  async importExecute(payload: {
+    file_token: string;
+    mapping: Record<string, string>;
+    duplicate_action: 'update' | 'skip';
+  }): Promise<{ message: string; data: ClientImportResult }> {
+    const { data } = await api.post<{ message: string; data: ClientImportResult }>('/clients/import-execute', payload);
+    return data;
+  },
+
+  async importEncaissements(payloadOrForm: FormData | { use_data_folder?: boolean }): Promise<any> {
+    const isFormData = typeof FormData !== 'undefined' && payloadOrForm instanceof FormData;
+    const { data } = await api.post('/clients/import-encaissements', payloadOrForm, {
+      headers: isFormData ? { 'Content-Type': 'multipart/form-data' } : undefined,
+    });
+    return data;
+  },
+
+  async importRecouvrement(
+    fileOrOptions?: File | FormData | { use_data_folder?: boolean; create_missing?: boolean },
+    createMissing: boolean = true
+  ): Promise<any> {
+    if (typeof FormData !== 'undefined' && fileOrOptions instanceof FormData) {
+      const { data } = await api.post('/clients/import-recouvrement', fileOrOptions, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      return data;
+    }
+    if (typeof File !== 'undefined' && fileOrOptions instanceof File) {
+      const formData = new FormData();
+      formData.append('file', fileOrOptions);
+      formData.append('create_missing', createMissing ? '1' : '0');
+      const { data } = await api.post('/clients/import-recouvrement', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      return data;
+    }
+    const { data } = await api.post('/clients/import-recouvrement', fileOrOptions || {});
+    return data;
   },
 };

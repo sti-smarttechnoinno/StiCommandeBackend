@@ -2,7 +2,6 @@
 
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
-import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import {
   Breadcrumb,
@@ -15,7 +14,8 @@ import { KPICards } from '@/features/clients/components/kpi-cards';
 import { ClientsTable } from '@/features/clients/components/clients-table';
 import { BottomToolbar } from '@/features/clients/components/bottom-toolbar';
 import { AnalyticsPanel } from '@/features/clients/components/analytics-panel';
-import { Plus, Download, RefreshCw, Calendar } from 'lucide-react';
+import { ImportClientsDialog } from '@/features/clients/components/import-clients-dialog';
+import { Plus, Download, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useWebSocketOrders } from '@/hooks/use-websocket-orders';
@@ -24,14 +24,12 @@ import { usePermissions } from '@/hooks/use-permissions';
 export default function ClientsPage() {
   const { can } = usePermissions();
   const [mounted, setMounted] = useState(false);
-  const [currentDate, setCurrentDate] = useState<string>('Friday, July 31, 2026');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const { isConnected, lastEvent } = useWebSocketOrders();
   const [tableKey, setTableKey] = useState<number>(0);
 
   useEffect(() => {
     setMounted(true);
-    setCurrentDate(format(new Date(), 'EEEE, MMMM d, yyyy'));
   }, []);
 
   useEffect(() => {
@@ -43,7 +41,7 @@ export default function ClientsPage() {
   const handleRefresh = () => {
     setIsRefreshing(true);
     setTableKey((prev) => prev + 1);
-    toast.info('Refreshing clients data...');
+    toast.info('Actualisation des données clients...');
     setTimeout(() => setIsRefreshing(false), 800);
   };
 
@@ -58,7 +56,7 @@ export default function ClientsPage() {
             <BreadcrumbList>
               <BreadcrumbItem>
                 <BreadcrumbLink href="/dashboard" className="text-muted-foreground text-xs hover:text-foreground transition-colors">
-                  Home
+                  Accueil
                 </BreadcrumbLink>
               </BreadcrumbItem>
               <BreadcrumbSeparator />
@@ -70,30 +68,27 @@ export default function ClientsPage() {
             </BreadcrumbList>
           </Breadcrumb>
           <h1 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight">
-            Clients Management
+            Gestion des clients
           </h1>
           <p className="text-sm text-muted-foreground">
-            Manage customers, monitor credit limits, assign delegates, and oversee regional distribution.
+            Gérez vos clients, suivez les limites de crédit et soldes impayés, et supervisez les attributions.
           </p>
         </div>
 
         {/* Action Toolbar */}
         <div className="flex items-center gap-2.5 flex-wrap">
-          {/* Date Badge */}
-          <div className="flex items-center gap-2 text-xs font-semibold text-foreground bg-card/90 backdrop-blur-md px-3.5 py-2 rounded-full border border-border/70 shadow-xs">
-            <Calendar className="h-3.5 w-3.5 text-primary" />
-            <span>{currentDate}</span>
-          </div>
+          {/* Import Clients */}
+          <ImportClientsDialog buttonLabel="Importer Clients" onSuccess={handleRefresh} />
 
           {/* Export Button */}
           <Button
             variant="outline"
             size="sm"
-            onClick={() => toast.info('Exporting report...')}
+            onClick={() => toast.info('Exportation du rapport...')}
             className="gap-2 rounded-full h-9 px-4 font-semibold text-xs bg-card hover:bg-muted/80 text-foreground border-border/70 shadow-xs hover:shadow-sm transition-all duration-200"
           >
             <Download className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
-            <span>Export</span>
+            <span>Exporter</span>
           </Button>
 
           {/* Refresh Button */}
@@ -104,7 +99,7 @@ export default function ClientsPage() {
             className="gap-2 rounded-full h-9 px-4 font-semibold text-xs bg-card hover:bg-muted/80 text-foreground border-border/70 shadow-xs hover:shadow-sm transition-all duration-200"
           >
             <RefreshCw className={cn("h-3.5 w-3.5 text-amber-500 transition-transform duration-700", isRefreshing && "animate-spin")} />
-            <span>Refresh</span>
+            <span>Actualiser</span>
           </Button>
 
           {/* New Client Primary Button (Visible only if can('clients.create')) */}
@@ -115,7 +110,7 @@ export default function ClientsPage() {
                 className="gap-2 rounded-full h-9 px-4 font-bold text-xs bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary text-primary-foreground shadow-md shadow-primary/20 hover:shadow-lg hover:shadow-primary/30 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
               >
                 <Plus className="h-3.5 w-3.5 text-primary-foreground" />
-                <span>New Client</span>
+                <span>Nouveau Client</span>
               </Button>
             </Link>
           )}

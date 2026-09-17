@@ -1,0 +1,248 @@
+pipeline {
+    agent any
+
+    triggers {
+        pollSCM('H/2 * * * *')
+        githubPush()
+    }
+
+    options {
+        timeout(time: 30, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '10', artifactNumToKeepStr: '10'))
+        timestamps()
+        // Prevents overlapping builds from colliding on the fixed smoke-test port (3099)
+        disableConcurrentBuilds()
+    }
+
+    environment {
+        IMAGE_NAME      = 'sticommande-frontend'
+        IMAGE_TAG       = "${env.BUILD_NUMBER}"
+        CONTAINER_NAME  = 'sticommande-frontend'
+        CONTAINER_PORT  = '3000'
+        DEPLOY_PATH     = '/var/www/commande/frontend'
+        DEPLOY_STRATEGY = 'docker-compose'
+
+        // Baked into the client bundle at build time — set these to your real
+        // backend/websocket addresses (e.g. http://192.168.x.x:8000/api).
+        NEXT_PUBLIC_API_URL = "${env.NEXT_PUBLIC_API_URL ?: 'http://localhost:8000/api'}"
+        NEXT_PUBLIC_WS_URL  = "${env.NEXT_PUBLIC_WS_URL ?: 'ws://localhost:8085'}"
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                echo "--> Checking out source code..."
+                checkout scm
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                echo "--> Building production Next.js Docker image: ${env.IMAGE_NAME}:${env.IMAGE_TAG}..."
+                echo "--> NEXT_PUBLIC_API_URL=${env.NEXT_PUBLIC_API_URL}"
+                echo "--> NEXT_PUBLIC_WS_URL=${env.NEXT_PUBLIC_WS_URL}"
+                script {
+                    if (isUnix()) {
+                        sh """
+                            docker build \
+                                --build-arg NEXT_PUBLIC_API_URL="${env.NEXT_PUBLIC_API_URL}" \
+                                --build-arg NEXT_PUBLIC_WS_URL="${env.NEXT_PUBLIC_WS_URL}" \
+                                -t ${env.IMAGE_NAME}:${env.IMAGE_TAG} \
+                                -t ${env.IMAGE_NAME}:latest \
+                                -f Dockerfile .
+                        """
+                    } else {
+                        powershell """
+                            docker build `
+                                --build-arg NEXT_PUBLIC_API_URL="${env.NEXT_PUBLIC_API_URL}" `
+                                --build-arg NEXT_PUBLIC_WS_URL="${env.NEXT_PUBLIC_WS_URL}" `
+                                -t ${env.IMAGE_NAME}:${env.IMAGE_TAG} `
+                                -t ${env.IMAGE_NAME}:latest `
+                                -f Dockerfile .
+                            if (\$LASTEXITCODE -ne 0) { exit \$LASTEXITCODE }
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('Smoke Test (Healthcheck)') {
+            steps {
+                echo "--> Performing container smoke test on port 3099..."
+                script {
+                    if (isUnix()) {
+                        sh """
+                            TEST_CONTAINER="test_${env.IMAGE_NAME}_${env.BUILD_NUMBER}"
+
+                            docker rm -f "\$TEST_CONTAINER" >/dev/null 2>&1 || true
+
+                            docker run -d --name "\$TEST_CONTAINER" \
+                                -p 127.0.0.1:3099:3000 \
+                                ${env.IMAGE_NAME}:${env.IMAGE_TAG}
+
+                            HTTP_STATUS="000"
+                            for i in \$(seq 1 30); do
+                                STATUS=\$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3099/ 2>/dev/null || true)
+                                if [ "\$STATUS" = "200" ] || [ "\$STATUS" = "304" ]; then
+                                    HTTP_STATUS="200"
+                                    echo "Frontend healthcheck passed on host port 3099 after \${i}s!"
+                                    break
+                                fi
+
+                                sleep 1
+                            done
+
+                            if [ "\$HTTP_STATUS" != "200" ]; then
+                                echo "ERROR: Frontend smoke test failed! Container logs:"
+                                docker logs "\$TEST_CONTAINER" || true
+                                docker stop "\$TEST_CONTAINER" || true
+                                docker rm -f "\$TEST_CONTAINER" || true
+                                exit 1
+                            fi
+
+                            docker stop "\$TEST_CONTAINER" || true
+                            docker rm -f "\$TEST_CONTAINER" || true
+                        """
+                    } else {
+                        powershell """
+                            \$testContainer = "test_${env.IMAGE_NAME}_${env.BUILD_NUMBER}"
+                            docker rm -f \$testContainer 2>\$null
+
+                            docker run -d --name \$testContainer `
+                                -p 127.0.0.1:3099:3000 `
+                                ${env.IMAGE_NAME}:${env.IMAGE_TAG}
+
+                            \$httpStatus = "000"
+                            for (\$i = 1; \$i -le 30; \$i++) {
+                                try {
+                                    \$resp = Invoke-WebRequest -Uri "http://127.0.0.1:3099/" -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop
+                                    if (\$resp.StatusCode -eq 200 -or \$resp.StatusCode -eq 304) {
+                                        \$httpStatus = "200"
+                                        Write-Host "Frontend healthcheck passed on host port 3099 after \${i}s!"
+                                        break
+                                    }
+                                } catch {
+                                    if (\$_.Exception.Response -and (\$_.Exception.Response.StatusCode.value__ -eq 200 -or \$_.Exception.Response.StatusCode.value__ -eq 304)) {
+                                        \$httpStatus = "200"
+                                        Write-Host "Frontend healthcheck passed on host port 3099!"
+                                        break
+                                    }
+                                }
+                                Start-Sleep -Seconds 1
+                            }
+
+                            if (\$httpStatus -ne "200") {
+                                Write-Host "ERROR: Frontend smoke test failed! Container logs:"
+                                docker logs \$testContainer
+                                docker stop \$testContainer 2>\$null
+                                docker rm -f \$testContainer 2>\$null
+                                exit 1
+                            }
+
+                            docker stop \$testContainer 2>\$null
+                            docker rm -f \$testContainer 2>\$null
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                script {
+                    if (isUnix()) {
+                        sh """
+                            SUDO=""
+                            if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+                                SUDO="sudo -n"
+                            fi
+
+                            TARGET_DIR="${env.DEPLOY_PATH}"
+                            CAN_USE_DEPLOY_PATH=false
+
+                            if [ -d "\$TARGET_DIR" ] && [ -w "\$TARGET_DIR" ]; then
+                                CAN_USE_DEPLOY_PATH=true
+                            elif mkdir -p "\$TARGET_DIR" 2>/dev/null; then
+                                CAN_USE_DEPLOY_PATH=true
+                            elif [ -n "\$SUDO" ] && \$SUDO mkdir -p "\$TARGET_DIR" 2>/dev/null; then
+                                \$SUDO chown -R \$(whoami): "\$TARGET_DIR" 2>/dev/null || true
+                                CAN_USE_DEPLOY_PATH=true
+                            fi
+
+                            if [ "\$CAN_USE_DEPLOY_PATH" = "true" ]; then
+                                echo "--> Synchronizing updated frontend files to \$TARGET_DIR..."
+                                rsync -av --delete \
+                                    --no-owner \
+                                    --no-group \
+                                    --no-perms \
+                                    --exclude=".git" \
+                                    --exclude=".next" \
+                                    --exclude="node_modules" \
+                                    --exclude=".env*.local" \
+                                    ./ "\$TARGET_DIR"/
+                            else
+                                echo "Notice: Cannot write to \$TARGET_DIR. Deploying directly from workspace: \$(pwd)"
+                                TARGET_DIR="\$(pwd)"
+                            fi
+
+                            if [ "${env.DEPLOY_STRATEGY}" = "docker-compose" ]; then
+                                echo "--> Deploying Frontend via Docker Compose in \$TARGET_DIR..."
+                                cd "\$TARGET_DIR"
+                                docker compose down --remove-orphans || true
+                                docker compose up -d
+                                docker compose ps
+                            else
+                                echo "--> Deploying Frontend via standalone Docker run..."
+                                docker stop ${env.CONTAINER_NAME} || true
+                                docker rm -f ${env.CONTAINER_NAME} || true
+                                docker run -d \
+                                    --name ${env.CONTAINER_NAME} \
+                                    --restart unless-stopped \
+                                    -p 127.0.0.1:${env.CONTAINER_PORT}:3000 \
+                                    ${env.IMAGE_NAME}:latest
+                            fi
+                        """
+                    } else {
+                        powershell """
+                            Write-Host "--> Deploying frontend on Windows Server..."
+                            if ("${env.DEPLOY_STRATEGY}" -eq "docker-compose") {
+                                Write-Host "--> Deploying Frontend via Docker Compose..."
+                                docker compose down --remove-orphans 2>\$null
+                                docker compose up -d
+                                if (\$LASTEXITCODE -ne 0) { exit \$LASTEXITCODE }
+                                docker compose ps
+                            } else {
+                                Write-Host "--> Deploying Frontend via standalone Docker run..."
+                                docker stop ${env.CONTAINER_NAME} 2>\$null
+                                docker rm -f ${env.CONTAINER_NAME} 2>\$null
+                                docker run -d `
+                                    --name ${env.CONTAINER_NAME} `
+                                    --restart unless-stopped `
+                                    -p 127.0.0.1:${env.CONTAINER_PORT}:3000 `
+                                    ${env.IMAGE_NAME}:latest
+                            }
+                        """
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            script {
+                if (isUnix()) {
+                    sh 'docker image prune -f || true'
+                } else {
+                    powershell 'docker image prune -f 2>$null'
+                }
+            }
+        }
+        success {
+            echo "SUCCESS: StiCommande Frontend build and deployment completed successfully."
+        }
+        failure {
+            echo "FAILURE: StiCommande Frontend pipeline failed."
+        }
+    }
+}

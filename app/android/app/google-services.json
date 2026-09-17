@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "682009942457",
+    "project_id": "dz-sti-commande",
+    "storage_bucket": "dz-sti-commande.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:682009942457:android:a9f1c198c5ff9d3694fe68",
+        "android_client_info": {
+          "package_name": "dz.sti.commande"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDJiluGoF02bPPsNbxSju_dFhzbmH9tKpE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

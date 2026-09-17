@@ -14,6 +14,7 @@ import {
   HardDrive,
   Truck,
   ShoppingBag,
+  Banknote,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -48,6 +49,7 @@ export const NAV_ITEMS: NavItem[] = [
     ],
   },
   { label: 'Clients', href: '/clients', icon: Users, permission: 'clients.view' },
+  { label: 'Encaissements', href: '/encaissements', icon: Banknote, permission: 'clients.view' },
   { label: 'Délégués', href: '/delegates', icon: UserPlus, permission: 'users.manage' },
   { label: 'Produits', href: '/products', icon: Package, permission: 'products.view' },
   { label: 'Régions', href: '/regions', icon: Globe, permission: 'settings.manage' },

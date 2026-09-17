@@ -1,33 +1,55 @@
-/.phpunit.cache
-/bootstrap/ssr
+# Dependencies
 /node_modules
+/frontend/node_modules
+/backend/vendor
+/.phpunit.cache
+/backend/.phpunit.cache
+/backend/.phpunit.result.cache
+
+# Next.js Build
+/frontend/.next
+/frontend/out
+
+# Flutter
+/app/.dart_tool
+/app/.flutter-plugins
+/app/.flutter-plugins-dependencies
+/app/.packages
+/app/build
+
+# Laravel Builds & caches
 /public/build
-/public/fonts-manifest.dev.json
-/public/hot
-/public/storage
-/resources/js/actions
-/resources/js/routes
-/resources/js/wayfinder
-/storage/*.key
-/storage/pail
-/storage/app/firebase-credentials.json
-/storage/app/*firebase*.json
-*firebase-credentials*.json
-/vendor
+/backend/public/build
+/backend/public/storage
+/backend/bootstrap/cache/*.php
+/backend/storage/logs/*.log
+/backend/storage/framework/cache/data/*
+/backend/storage/framework/sessions/*
+/backend/storage/framework/views/*
+
+# Environment files
 .env
 .env.*
-.env.backup
-.env.production
-.phpactor.json
-.phpunit.result.cache
-Homestead.json
-Homestead.yaml
-npm-debug.log
-yarn-error.log
-/auth.json
-/.fleet
-/.idea
-/.nova
-/.vscode
-/.zed
+!.env.example
+backend/.env
+backend/.env.*
+!backend/.env.example
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+
+# Logs & temp
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS & IDE
+.DS_Store
+Thumbs.db
+.vscode
+.idea
+.fleet
+.nova
+.zed
 CPANEL_REALTIME_GUIDE.md
