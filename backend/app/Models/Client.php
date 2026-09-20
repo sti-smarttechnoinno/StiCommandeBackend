@@ -59,6 +59,7 @@ class Client extends Model
             'total_spent' => 'decimal:2',
             'total_orders' => 'integer',
             'last_order_at' => 'datetime',
+            'last_payment_date' => 'datetime',
         ];
     }
 

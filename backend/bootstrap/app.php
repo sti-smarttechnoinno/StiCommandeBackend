@@ -21,8 +21,11 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
 
         $middleware->api(prepend: [
+            \App\Http\Middleware\ForceJsonResponse::class,
             \Illuminate\Http\Middleware\HandleCors::class,
         ]);
+
+        $middleware->redirectGuestsTo(fn (Request $request) => ($request->is('api/*') || $request->expectsJson()) ? null : route('login'));
 
         $middleware->alias([
             'admin' => \App\Http\Middleware\AdminMiddleware::class,

@@ -83,6 +83,8 @@ Route::get('/clients/filter-options', [ClientController::class, 'filterOptions']
 Route::post('/clients/import-encaissements', [ClientController::class, 'importEncaissements']);
 Route::post('/clients/import-recouvrement', [ClientController::class, 'importRecouvrement']);
 Route::post('/clients/import-preview', [ClientController::class, 'importPreview']);
+Route::post('/clients/import-extract-wilayas', [ClientController::class, 'extractWilayas']);
+Route::post('/clients/import-verify', [ClientController::class, 'importVerify']);
 Route::post('/clients/import-execute', [ClientController::class, 'importExecute']);
 Route::get('/encaissements/filter-options', [EncaissementController::class, 'filterOptions']);
 Route::get('/encaissements', [EncaissementController::class, 'index']);
@@ -139,10 +141,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/clients/kpis', [ClientController::class, 'kpis']);
     Route::get('/clients/analytics', [ClientController::class, 'analytics']);
     Route::post('/clients/bulk', [ClientController::class, 'bulkAction']);
-    Route::post('/clients/import-encaissements', [ClientController::class, 'importEncaissements']);
-    Route::post('/clients/import-recouvrement', [ClientController::class, 'importRecouvrement']);
-    Route::post('/clients/import-preview', [ClientController::class, 'importPreview']);
-    Route::post('/clients/import-execute', [ClientController::class, 'importExecute']);
     Route::apiResource('/clients', ClientController::class);
 
     Route::get('/encaissements/filter-options', [EncaissementController::class, 'filterOptions']);

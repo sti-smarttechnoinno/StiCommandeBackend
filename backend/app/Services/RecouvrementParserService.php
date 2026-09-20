@@ -66,13 +66,20 @@ class RecouvrementParserService
         $totalSolde = 0.0;
         $clientsWithDebt = 0;
 
+        // Default standard columns if not detected from header
+        $colMap = [
+            'code' => 'C',
+            'name' => 'D',
+            'solde' => 'E',
+            'ventes' => 'F',
+            'wilaya' => 'H',
+            'region' => 'I',
+            'credit' => 'M',
+        ];
+
         while ($xmlSheet->read()) {
             if ($xmlSheet->nodeType === XMLReader::ELEMENT && $xmlSheet->name === 'row') {
                 $rowCount++;
-                if ($rowCount === 1) {
-                    // Header row
-                    continue;
-                }
 
                 $rowXml = $xmlSheet->readOuterXml();
                 $cells = [];
@@ -91,19 +98,44 @@ class RecouvrementParserService
                     $cells[$col] = $val;
                 }
 
-                $code = trim($cells['C'] ?? '');
-                $name = trim($cells['D'] ?? '');
-                $solde = (float) str_replace([' ', ','], ['', '.'], $cells['E'] ?? '0');
-                $ventes = (float) str_replace([' ', ','], ['', '.'], $cells['F'] ?? '0');
-                $wilaya = trim($cells['H'] ?? '');
-                $region = trim($cells['I'] ?? '');
-                $credit = (float) str_replace([' ', ','], ['', '.'], $cells['M'] ?? '0');
+                if ($rowCount === 1) {
+                    // Inspect header row to detect column names dynamically
+                    foreach ($cells as $cLetter => $hVal) {
+                        $h = mb_strtolower(trim($hVal));
+                        if (in_array($h, ['code', 'code client', 'num client', 'client code', 'code_client'])) {
+                            $colMap['code'] = $cLetter;
+                        } elseif (in_array($h, ['libellé', 'libelle', 'nom', 'nom client', 'client', 'raison sociale', 'nom du client', 'clients', 'tiers'])) {
+                            $colMap['name'] = $cLetter;
+                        } elseif (in_array($h, ['solde', 'solde final', 'solde net', 'impayé', 'impayes', 'creance', 'créances', 'solde initial', 'balance', 'sold'])) {
+                            $colMap['solde'] = $cLetter;
+                        } elseif (in_array($h, ['ventes', 'vente', 'total ventes', 'ca', "chiffre d'affaires"])) {
+                            $colMap['ventes'] = $cLetter;
+                        } elseif (in_array($h, ['wilaya', 'ville', 'state'])) {
+                            $colMap['wilaya'] = $cLetter;
+                        } elseif (in_array($h, ['région', 'region', 'zone'])) {
+                            $colMap['region'] = $cLetter;
+                        } elseif (in_array($h, ['crédit', 'credit'])) {
+                            $colMap['credit'] = $cLetter;
+                        }
+                    }
+                    continue;
+                }
+
+                $code = trim($cells[$colMap['code']] ?? '');
+                $name = trim($cells[$colMap['name']] ?? '');
+                $solde = (float) str_replace([' ', ','], ['', '.'], $cells[$colMap['solde']] ?? '0');
+                $ventes = (float) str_replace([' ', ','], ['', '.'], $cells[$colMap['ventes']] ?? '0');
+                $wilaya = trim($cells[$colMap['wilaya']] ?? '');
+                $region = trim($cells[$colMap['region']] ?? '');
+                $credit = (float) str_replace([' ', ','], ['', '.'], $cells[$colMap['credit']] ?? '0');
 
                 if (empty($name) && empty($code)) {
                     continue;
                 }
 
-                $normalizedName = mb_strtolower(trim(preg_replace('/\s+/', ' ', $name)));
+                $normalizedName = $this->normalizeName($name);
+                $baseName = $this->extractBaseName($name);
+                $normalizedBase = $this->normalizeName($baseName);
                 $normalizedCode = strtoupper(trim($code));
 
                 if ($solde > 0) {
@@ -116,6 +148,7 @@ class RecouvrementParserService
                     'normalized_code' => $normalizedCode,
                     'name' => $name,
                     'normalized_name' => $normalizedName,
+                    'normalized_base' => $normalizedBase,
                     'solde' => $solde,
                     'ventes' => $ventes,
                     'credit' => $credit,
@@ -131,6 +164,7 @@ class RecouvrementParserService
         // 3. Database persistence & synchronization
         $clientsUpdated = 0;
         $clientsCreated = 0;
+        $matchedSamples = [];
 
         DB::beginTransaction();
         try {
@@ -138,14 +172,23 @@ class RecouvrementParserService
             $allClients = Client::all();
             $clientsByCode = [];
             $clientsByName = [];
+            $clientsByBaseName = [];
 
             foreach ($allClients as $client) {
                 if (!empty($client->client_code)) {
                     $clientsByCode[strtoupper(trim($client->client_code))] = $client;
                 }
                 if (!empty($client->name)) {
-                    $norm = mb_strtolower(trim(preg_replace('/\s+/', ' ', $client->name)));
-                    $clientsByName[$norm] = $client;
+                    $normFull = $this->normalizeName($client->name);
+                    if ($normFull !== '') {
+                        $clientsByName[$normFull] = $client;
+                    }
+
+                    $base = $this->extractBaseName($client->name);
+                    $normBase = $this->normalizeName($base);
+                    if ($normBase !== '' && $normBase !== $normFull) {
+                        $clientsByBaseName[$normBase] = $client;
+                    }
                 }
             }
 
@@ -153,17 +196,35 @@ class RecouvrementParserService
 
             foreach ($parsedClients as $item) {
                 $client = null;
+                $matchType = null;
 
                 // Priority 1: Match by Code
                 if (!empty($item['normalized_code']) && isset($clientsByCode[$item['normalized_code']])) {
                     $client = $clientsByCode[$item['normalized_code']];
+                    $matchType = 'code';
                 }
-                // Priority 2: Match by Normalized Name
+                // Priority 2: Match by Full Normalized Name
                 elseif (!empty($item['normalized_name']) && isset($clientsByName[$item['normalized_name']])) {
                     $client = $clientsByName[$item['normalized_name']];
+                    $matchType = 'exact_name';
+                }
+                // Priority 3: Match by Base Normalized Name (handles parentheses/store suffixes)
+                elseif (!empty($item['normalized_base']) && isset($clientsByName[$item['normalized_base']])) {
+                    $client = $clientsByName[$item['normalized_base']];
+                    $matchType = 'base_name';
+                }
+                elseif (!empty($item['normalized_name']) && isset($clientsByBaseName[$item['normalized_name']])) {
+                    $client = $clientsByBaseName[$item['normalized_name']];
+                    $matchType = 'db_base_name';
+                }
+                elseif (!empty($item['normalized_base']) && isset($clientsByBaseName[$item['normalized_base']])) {
+                    $client = $clientsByBaseName[$item['normalized_base']];
+                    $matchType = 'both_base_name';
                 }
 
                 if ($client) {
+                    $oldSolde = (float) $client->outstanding_balance;
+
                     // Update existing client
                     $updates = [
                         'outstanding_balance' => $item['solde'],
@@ -189,6 +250,16 @@ class RecouvrementParserService
 
                     $client->update($updates);
                     $clientsUpdated++;
+
+                    if (count($matchedSamples) < 5) {
+                        $matchedSamples[] = [
+                            'name' => $client->name,
+                            'code' => $client->client_code,
+                            'old_solde' => $oldSolde,
+                            'new_solde' => $item['solde'],
+                            'match_type' => $matchType,
+                        ];
+                    }
                 } elseif ($createMissing && !empty($item['name'])) {
                     // Create new client
                     $lastClientCodeNum++;
@@ -228,6 +299,7 @@ class RecouvrementParserService
                 'clients_with_debt' => $clientsWithDebt,
                 'total_outstanding' => round($totalSolde, 2),
                 'file_name' => $originalFileName ?: basename($filePath),
+                'matched_samples' => $matchedSamples,
             ];
         } catch (\Throwable $e) {
             DB::rollBack();
@@ -236,5 +308,30 @@ class RecouvrementParserService
             ]);
             throw $e;
         }
+    }
+
+    /**
+     * Normalize a client name for resilient fuzzy matching.
+     */
+    public function normalizeName(string $name): string
+    {
+        $str = mb_strtolower($name, 'UTF-8');
+        $str = str_replace(
+            ['é', 'è', 'ê', 'ë', 'à', 'â', 'ä', 'î', 'ï', 'ô', 'ö', 'ù', 'û', 'ü', 'ç', 'ñ', "'", '"', '’'],
+            ['e', 'e', 'e', 'e', 'a', 'a', 'a', 'i', 'i', 'o', 'o', 'u', 'u', 'u', 'c', 'n', ' ', ' ', ' '],
+            $str
+        );
+        $str = preg_replace('/[^a-z0-9]/', ' ', $str);
+        return trim(preg_replace('/\s+/', ' ', $str));
+    }
+
+    /**
+     * Extract base client name without parentheses, brackets, or store mentions.
+     */
+    public function extractBaseName(string $name): string
+    {
+        $base = preg_replace('/\s*\([^)]*\)/', '', $name);
+        $base = preg_replace('/\s*\[[^\]]*\]/', '', $base);
+        return trim($base);
     }
 }

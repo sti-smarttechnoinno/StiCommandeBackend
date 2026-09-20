@@ -10,3 +10,9 @@ Route::get('/', function () {
         'timestamp' => now()->toIso8601String(),
     ]);
 })->name('home');
+
+Route::get('/login', function () {
+    return response()->json([
+        'message' => 'Unauthenticated.',
+    ], 401);
+})->name('login');

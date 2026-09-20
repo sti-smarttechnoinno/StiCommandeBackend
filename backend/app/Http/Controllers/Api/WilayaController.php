@@ -18,13 +18,39 @@ class WilayaController extends Controller
 
         if ($search = $request->input('search')) {
             $q = strtolower($search);
-            $query->where(function ($query) use ($q) {
+            // Also find delegates whose name matches the search query and get their wilayas
+            $matchingDelegates = User::whereIn('role', ['delegate', 'commercial'])
+                ->whereRaw('LOWER(name) LIKE ?', ["%{$q}%"])
+                ->get();
+            $delegateWilayas = collect();
+            foreach ($matchingDelegates as $md) {
+                if ($md->wilaya) {
+                    foreach (explode(',', $md->wilaya) as $part) {
+                        $trimmed = trim($part);
+                        if (!empty($trimmed)) {
+                            $delegateWilayas->push($trimmed);
+                        }
+                    }
+                }
+            }
+
+            $query->where(function ($query) use ($q, $delegateWilayas) {
                 $query->whereRaw('LOWER(name) LIKE ?', ["%{$q}%"])
                     ->orWhere('code', 'LIKE', "%{$q}%")
                     ->orWhereRaw('LOWER(region_name) LIKE ?', ["%{$q}%"])
                     ->orWhereHas('delegate', function ($dq) use ($q) {
                         $dq->whereRaw('LOWER(name) LIKE ?', ["%{$q}%"]);
                     });
+
+                foreach ($delegateWilayas as $dw) {
+                    if (preg_match('/^(\d+)\s*-\s*(.+)$/', $dw, $m)) {
+                        $query->orWhere('code', trim($m[1]))->orWhere('name', trim($m[2]));
+                    } elseif (is_numeric($dw)) {
+                        $query->orWhere('code', str_pad($dw, 2, '0', STR_PAD_LEFT));
+                    } else {
+                        $query->orWhere('name', 'LIKE', "%{$dw}%");
+                    }
+                }
             });
         }
 
@@ -252,28 +278,49 @@ class WilayaController extends Controller
 
     private function formatWilaya(Wilaya $w): array
     {
-        $delegate = $w->delegate;
-        if (! $delegate) {
-            $delegate = User::where('role', 'delegate')
-                ->where(function ($query) use ($w) {
-                    $query->where('wilaya', $w->name)
-                        ->orWhere('wilaya', 'LIKE', "%{$w->name}%")
-                        ->orWhere('wilaya', 'LIKE', "{$w->code}%");
-                })->first();
+        $delegates = collect();
+        if ($w->delegate) {
+            $delegates->push($w->delegate);
         }
 
-        $formattedDelegate = null;
-        if ($delegate) {
+        $matchingUsers = User::whereIn('role', ['delegate', 'commercial'])
+            ->where(function ($query) use ($w) {
+                $query->where('wilaya', $w->name)
+                    ->orWhere('wilaya', 'LIKE', "%{$w->name}%")
+                    ->orWhere('wilaya', 'LIKE', "{$w->code}%")
+                    ->orWhere('wilaya', 'LIKE', "%{$w->code} - %")
+                    ->orWhere('id', $w->delegate_id);
+            })->get();
+
+        $delegates = $delegates->merge($matchingUsers);
+
+        $clientDelegateIds = Client::where(function ($q) use ($w) {
+            $q->where('wilaya', 'LIKE', "%{$w->name}%")
+              ->orWhere('wilaya', 'LIKE', "%{$w->code}%");
+        })->whereNotNull('delegate_id')->pluck('delegate_id')->unique();
+
+        if ($clientDelegateIds->isNotEmpty()) {
+            $clientDelegates = User::whereIn('id', $clientDelegateIds)->get();
+            $delegates = $delegates->merge($clientDelegates);
+        }
+
+        $delegates = $delegates->unique('id')->values();
+
+        $formattedDelegates = $delegates->map(function ($delegate) {
             $avatar = implode('', array_map(fn ($n) => $n[0] ?? '', explode(' ', $delegate->name)));
-            $formattedDelegate = [
+            return [
+                'id' => (string) $delegate->id,
                 'name' => $delegate->name,
                 'phone' => $delegate->phone ?? '+213 550000000',
                 'username' => $delegate->username ?? $delegate->name,
                 'avatar' => strtoupper(substr($avatar, 0, 2)),
                 'isOnline' => $delegate->status === 'online',
-                'role' => 'Regional Delegate',
+                'role' => $delegate->role === 'commercial' ? 'Commercial Delegate' : 'Regional Delegate',
+                'region' => $delegate->region ?? '',
             ];
-        }
+        })->all();
+
+        $formattedDelegate = $formattedDelegates[0] ?? null;
 
         $stats = $this->getWilayaRealStats($w);
 
@@ -285,6 +332,7 @@ class WilayaController extends Controller
             'regionName' => $w->region_name,
             'rank' => $w->rank,
             'delegate' => $formattedDelegate,
+            'delegates' => $formattedDelegates,
             'clients' => $stats['clients'],
             'activeClients' => $stats['activeClients'],
             'ordersToday' => 0,

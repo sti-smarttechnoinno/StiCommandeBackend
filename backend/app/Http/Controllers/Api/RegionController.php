@@ -325,8 +325,47 @@ class RegionController extends Controller
 
     private function formatRegion(Region $region): array
     {
-        // 1. Mapped Wilayas: strictly wilayas explicitly assigned to this custom region
-        $wilayas = Wilaya::where('custom_region_id', $region->id)->get();
+        // 1. Commercial Delegates explicitly assigned to this region
+        $regionDelegates = User::whereIn('role', ['delegate', 'commercial'])
+            ->where(function ($q) use ($region) {
+                $q->where('region', $region->name)
+                    ->orWhere('region', $region->code);
+            })->get();
+
+        $allDelegates = User::whereIn('role', ['delegate', 'commercial'])->get();
+
+        // 2. Mapped Wilayas: explicitly assigned to this custom region OR covered by delegates of this region
+        $delegateWilayaPatterns = [];
+        foreach ($regionDelegates as $del) {
+            if (!empty($del->wilaya)) {
+                foreach (explode(',', $del->wilaya) as $part) {
+                    $trimmed = trim($part);
+                    if (!empty($trimmed)) {
+                        $delegateWilayaPatterns[] = $trimmed;
+                    }
+                }
+            }
+        }
+
+        $wilayasQuery = Wilaya::where('custom_region_id', $region->id);
+        if (!empty($delegateWilayaPatterns)) {
+            $wilayasQuery = Wilaya::where(function ($q) use ($region, $delegateWilayaPatterns) {
+                $q->where('custom_region_id', $region->id);
+                foreach ($delegateWilayaPatterns as $pat) {
+                    if (preg_match('/^(\d+)\s*-\s*(.+)$/', $pat, $matches)) {
+                        $code = trim($matches[1]);
+                        $name = trim($matches[2]);
+                        $q->orWhere('code', $code)->orWhere('name', $name);
+                    } elseif (is_numeric($pat)) {
+                        $q->orWhere('code', str_pad($pat, 2, '0', STR_PAD_LEFT));
+                    } else {
+                        $q->orWhere('name', 'LIKE', "%{$pat}%");
+                    }
+                }
+            });
+        }
+        $wilayas = $wilayasQuery->get();
+
         if ($wilayas->isEmpty()) {
             $baseCodes = ['center', 'east', 'west', 'south'];
             if (in_array(strtolower($region->code), $baseCodes)) {
@@ -338,39 +377,36 @@ class RegionController extends Controller
             }
         }
 
-        // 2. Commercial Delegates explicitly assigned to this region
-        $regionDelegates = User::where('role', 'delegate')
-            ->where(function ($q) use ($region) {
-                $q->where('region', $region->name)
-                    ->orWhere('region', $region->code);
-            })->get();
-
-        $allDelegates = User::where('role', 'delegate')->get();
-
         // 3. Format each Wilaya with REAL data strictly from DB
         $formattedWilayas = $wilayas->map(function ($w) use ($allDelegates) {
-            $del = null;
-            if ($w->delegate_id) {
-                $del = $allDelegates->firstWhere('id', $w->delegate_id);
-            }
-            if (! $del && $w->name) {
-                $del = $allDelegates->first(function ($d) use ($w) {
-                    return $d->wilaya && str_contains(strtolower($d->wilaya), strtolower($w->name));
-                });
-            }
+            $wilayaDelegates = $allDelegates->filter(function ($d) use ($w) {
+                if ($w->delegate_id && $d->id == $w->delegate_id) {
+                    return true;
+                }
+                if ($d->wilaya && (
+                    str_contains(strtolower($d->wilaya), strtolower($w->name)) ||
+                    str_contains($d->wilaya, $w->code)
+                )) {
+                    return true;
+                }
+                return false;
+            })->values();
 
-            $delegateData = null;
-            if ($del) {
-                $delegateData = [
+            $formattedWilayaDelegates = $wilayaDelegates->map(function ($del) {
+                $avatar = implode('', array_map(fn ($n) => $n[0] ?? '', explode(' ', $del->name)));
+                return [
                     'id' => (string) $del->id,
                     'name' => $del->name,
                     'phone' => $del->phone ?? '',
                     'username' => $del->username ?? $del->name,
-                    'avatar' => strtoupper(substr($del->name, 0, 2)),
+                    'avatar' => strtoupper(substr($avatar, 0, 2)),
                     'isOnline' => $del->status === 'online',
-                    'role' => 'Commercial Delegate',
+                    'role' => $del->role === 'commercial' ? 'Commercial Delegate' : 'Regional Delegate',
+                    'region' => $del->region ?? '',
                 ];
-            }
+            })->values()->all();
+
+            $delegateData = $formattedWilayaDelegates[0] ?? null;
 
             // Real Client Count for this wilaya
             $clientsQuery = Client::where(function ($q) use ($w) {
@@ -396,6 +432,7 @@ class RegionController extends Controller
                 'regionId' => $w->region_id ?? '',
                 'regionName' => $w->region_name ?? '',
                 'delegate' => $delegateData,
+                'delegates' => $formattedWilayaDelegates,
                 'clients' => $clientsCount,
                 'ordersToday' => $ordersToday,
                 'revenue' => $revenue,
@@ -406,7 +443,7 @@ class RegionController extends Controller
         });
 
         // Unique delegate count across region and wilayas
-        $assignedWilayaDelegateIds = $formattedWilayas->map(fn ($w) => $w['delegate']['id'] ?? null)->filter()->values();
+        $assignedWilayaDelegateIds = $formattedWilayas->flatMap(fn ($w) => collect($w['delegates'])->pluck('id'))->filter()->values();
         $regionDelegateIds = $regionDelegates->pluck('id')->map(fn ($id) => (string) $id);
         $totalUniqueDelegatesCount = $assignedWilayaDelegateIds->merge($regionDelegateIds)->unique()->count();
 

@@ -80,6 +80,7 @@ class ClientController extends Controller
             'totalOrders' => 'total_orders',
             'totalSpent' => 'total_spent',
             'outstandingBalance' => 'outstanding_balance',
+            'solde' => 'outstanding_balance',
             'createdAt' => 'created_at',
             'delegateName' => 'region',
         ];
@@ -749,8 +750,8 @@ class ClientController extends Controller
             'outstandingBalance' => (float) $client->outstanding_balance,
             'totalOrders' => $client->total_orders,
             'totalSpent' => (float) $client->total_spent,
-            'lastOrderDate' => $client->last_order_at?->toISOString(),
-            'lastPaymentDate' => $client->last_payment_date?->toISOString(),
+            'lastOrderDate' => $client->last_order_at instanceof \DateTimeInterface ? $client->last_order_at->toISOString() : ($client->last_order_at ? (string)$client->last_order_at : null),
+            'lastPaymentDate' => $client->last_payment_date instanceof \DateTimeInterface ? $client->last_payment_date->toISOString() : ($client->last_payment_date ? (string)$client->last_payment_date : null),
             'lastPaymentAmount' => (float) $client->last_payment_amount,
             'lastPaymentMode' => $client->last_payment_mode,
             'lastPaymentReference' => $client->last_payment_reference,
@@ -758,7 +759,7 @@ class ClientController extends Controller
             'lastPaymentOrderNumber' => $client->last_payment_order_number,
             'lastPaymentAccount' => $client->last_payment_account,
             'lastPayment' => $client->last_payment_amount > 0 ? [
-                'date' => $client->last_payment_date?->toISOString(),
+                'date' => $client->last_payment_date instanceof \DateTimeInterface ? $client->last_payment_date->toISOString() : ($client->last_payment_date ? (string)$client->last_payment_date : null),
                 'amount' => (float) $client->last_payment_amount,
                 'mode' => $client->last_payment_mode,
                 'reference' => $client->last_payment_reference,
@@ -953,7 +954,7 @@ class ClientController extends Controller
             $formattedTotal = number_format($result['total_outstanding'], 2, ',', ' ') . ' DA';
             return response()->json([
                 'success' => true,
-                'message' => "Soldes de recouvrement import├®s avec succ├¿s. {$result['total_rows']} lignes trait├®es ({$result['clients_updated']} mis ├á jour, {$result['clients_created']} cr├®├®s). Total des impay├®s : {$formattedTotal}.",
+                'message' => "Soldes de recouvrement importés avec succès. {$result['total_rows']} lignes traitées ({$result['clients_updated']} mis à jour, {$result['clients_created']} créés). Total des impayés : {$formattedTotal}.",
                 'data' => $result,
             ]);
         } catch (\Throwable $e) {
@@ -969,16 +970,93 @@ class ClientController extends Controller
         $user = auth('sanctum')->user() ?: $request->user();
         if ($user && !$user->hasPermission('clients.edit') && !$user->hasPermission('clients.create') && !in_array($user->role, ['admin', 'superadmin'])) {
             return response()->json([
-                'message' => "Acc├¿s non autoris├® : vous ne disposez pas des droits requis pour importer des clients."
+                'message' => "Accès non autorisé : vous ne disposez pas des droits requis pour importer des clients."
+            ], 403);
+        }
+
+        $file = $request->file('file') ?? $request->file('document') ?? $request->file('client_file');
+
+        if (!$file) {
+            return response()->json([
+                'message' => "Le fichier d'importation est obligatoire. Veuillez sélectionner un fichier Excel (.xlsx, .xls) ou CSV (.csv).",
+                'errors' => [
+                    'file' => ["Le fichier d'importation est obligatoire."]
+                ]
+            ], 422);
+        }
+
+        try {
+            $data = $importService->preview($file);
+            return response()->json([
+                'success' => true,
+                'data' => $data,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    public function extractWilayas(Request $request, \App\Services\ClientImportService $importService): JsonResponse
+    {
+        $user = auth('sanctum')->user() ?: $request->user();
+        if ($user && !$user->hasPermission('clients.edit') && !$user->hasPermission('clients.create') && !in_array($user->role, ['admin', 'superadmin'])) {
+            return response()->json([
+                'message' => "Accès non autorisé : vous ne disposez pas des droits requis pour importer des clients."
             ], 403);
         }
 
         $request->validate([
-            'file' => 'required|file|max:20480',
+            'file_token' => 'required|string',
+            'wilaya_column' => 'required|string',
         ]);
 
         try {
-            $data = $importService->preview($request->file('file'));
+            $data = $importService->extractWilayas(
+                $request->input('file_token'),
+                $request->input('wilaya_column')
+            );
+
+            return response()->json([
+                'success' => true,
+                'data' => $data,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    public function importVerify(Request $request, \App\Services\ClientImportService $importService): JsonResponse
+    {
+        $user = auth('sanctum')->user() ?: $request->user();
+        if ($user && !$user->hasPermission('clients.edit') && !$user->hasPermission('clients.create') && !in_array($user->role, ['admin', 'superadmin'])) {
+            return response()->json([
+                'message' => "Accès non autorisé : vous ne disposez pas des droits requis pour importer des clients."
+            ], 403);
+        }
+
+        $request->validate([
+            'file_token' => 'required|string',
+            'mapping' => 'required|array',
+            'mapping.name' => 'required|string',
+            'mapping.phone' => 'required|string',
+            'duplicate_action' => 'nullable|string|in:update,skip',
+            'wilaya_mapping' => 'nullable|array',
+        ]);
+
+        try {
+            $data = $importService->verify(
+                $request->input('file_token'),
+                $request->input('mapping'),
+                $request->input('duplicate_action', 'update'),
+                $request->input('wilaya_mapping', [])
+            );
+
             return response()->json([
                 'success' => true,
                 'data' => $data,
@@ -996,7 +1074,7 @@ class ClientController extends Controller
         $user = auth('sanctum')->user() ?: $request->user();
         if ($user && !$user->hasPermission('clients.edit') && !$user->hasPermission('clients.create') && !in_array($user->role, ['admin', 'superadmin'])) {
             return response()->json([
-                'message' => "Acc├¿s non autoris├® : vous ne disposez pas des droits requis pour importer des clients."
+                'message' => "Accès non autorisé : vous ne disposez pas des droits requis pour importer des clients."
             ], 403);
         }
 
@@ -1006,6 +1084,7 @@ class ClientController extends Controller
             'mapping.name' => 'required|string',
             'mapping.phone' => 'required|string',
             'duplicate_action' => 'nullable|string|in:update,skip',
+            'wilaya_mapping' => 'nullable|array',
         ]);
 
         try {
@@ -1013,7 +1092,8 @@ class ClientController extends Controller
                 $request->input('file_token'),
                 $request->input('mapping'),
                 $request->input('duplicate_action', 'update'),
-                $user?->id
+                $user?->id,
+                $request->input('wilaya_mapping', [])
             );
 
             return response()->json([
