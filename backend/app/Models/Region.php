@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Region extends Model
@@ -22,14 +23,19 @@ class Region extends Model
         'status',
     ];
 
-    public function wilayas(): HasMany
+    public function wilayas(): BelongsToMany
+    {
+        return $this->belongsToMany(Wilaya::class, 'region_wilaya');
+    }
+
+    public function defaultWilayas(): HasMany
     {
         return $this->hasMany(Wilaya::class, 'region_name', 'name');
     }
 
-    public function customWilayas(): HasMany
+    public function customWilayas(): BelongsToMany
     {
-        return $this->hasMany(Wilaya::class, 'custom_region_id');
+        return $this->belongsToMany(Wilaya::class, 'region_wilaya');
     }
 
     public function delegates(): HasMany

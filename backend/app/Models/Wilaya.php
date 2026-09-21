@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class Wilaya extends Model
 {
@@ -53,6 +54,11 @@ class Wilaya extends Model
     public function delegate(): BelongsTo
     {
         return $this->belongsTo(User::class, 'delegate_id');
+    }
+
+    public function regions(): BelongsToMany
+    {
+        return $this->belongsToMany(Region::class, 'region_wilaya');
     }
 
     public static array $defaultRegions = [

@@ -208,9 +208,26 @@ class ClientController extends Controller
             $request->merge(['outstanding_balance' => $request->input('outstandingBalance')]);
         }
 
+        if ($request->has('personalPhone') && !$request->has('personal_phone')) {
+            $request->merge(['personal_phone' => $request->input('personalPhone')]);
+        }
+        if ($request->has('stormPhone') && !$request->has('storm_phone')) {
+            $request->merge(['storm_phone' => $request->input('stormPhone')]);
+        }
+        if ($request->has('rcNumber') && !$request->has('rc_number')) {
+            $request->merge(['rc_number' => $request->input('rcNumber')]);
+        }
+        if (!$request->has('phone') && $request->has('personal_phone')) {
+            $request->merge(['phone' => $request->input('personal_phone')]);
+        }
+
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'phone' => 'required|string|max:20',
+            'phone' => 'nullable|string|max:50',
+            'personal_phone' => 'nullable|string|max:50',
+            'storm_phone' => 'nullable|string|max:50',
+            'rc_number' => 'nullable|string|max:100',
+            'email' => 'nullable|email|max:255',
             'address' => 'nullable|string|max:500',
             'region' => 'required|string|max:255',
             'wilaya' => 'required|string|max:255',
@@ -221,6 +238,11 @@ class ClientController extends Controller
             'notes' => 'nullable|string',
         ]);
 
+        $mainPhone = $request->input('personal_phone') ?: ($request->input('phone') ?: ($request->input('storm_phone') ?: ''));
+        $validated['phone'] = $mainPhone;
+        $validated['personal_phone'] = $request->input('personal_phone') ?: $mainPhone;
+        $validated['storm_phone'] = $request->input('storm_phone');
+        $validated['rc_number'] = $request->input('rc_number');
         $validated['address'] = (string) ($request->input('address') ?? '');
         $validated['client_code'] = $request->input('client_code', $this->generateClientCode());
         $validated['status'] = $request->input('status', 'active');
@@ -279,11 +301,24 @@ class ClientController extends Controller
             $request->merge(['delegate_id' => ($val === 'unassigned' || $val === null || $val === '' || $val === 0) ? null : $val]);
         }
 
+        if ($request->has('personalPhone') && !$request->has('personal_phone')) {
+            $request->merge(['personal_phone' => $request->input('personalPhone')]);
+        }
+        if ($request->has('stormPhone') && !$request->has('storm_phone')) {
+            $request->merge(['storm_phone' => $request->input('stormPhone')]);
+        }
+        if ($request->has('rcNumber') && !$request->has('rc_number')) {
+            $request->merge(['rc_number' => $request->input('rcNumber')]);
+        }
+
         $validated = $request->validate([
             'client_code' => 'nullable|string|max:50',
             'name' => 'sometimes|string|max:255',
             'email' => 'nullable|email|max:255',
-            'phone' => 'sometimes|string|max:20',
+            'phone' => 'sometimes|nullable|string|max:50',
+            'personal_phone' => 'sometimes|nullable|string|max:50',
+            'storm_phone' => 'sometimes|nullable|string|max:50',
+            'rc_number' => 'sometimes|nullable|string|max:100',
             'address' => 'nullable|string|max:500',
             'region' => 'sometimes|string|max:255',
             'wilaya' => 'sometimes|string|max:255',
@@ -293,6 +328,18 @@ class ClientController extends Controller
             'credit_limit' => 'nullable|numeric|min:0',
             'notes' => 'nullable|string',
         ]);
+
+        if ($request->has('personal_phone') || $request->has('phone')) {
+            $mainPhone = $request->input('personal_phone') ?: ($request->input('phone') ?: ($request->input('storm_phone') ?: $client->phone));
+            $validated['phone'] = $mainPhone;
+            $validated['personal_phone'] = $request->input('personal_phone') ?: $mainPhone;
+        }
+        if ($request->has('storm_phone')) {
+            $validated['storm_phone'] = $request->input('storm_phone');
+        }
+        if ($request->has('rc_number')) {
+            $validated['rc_number'] = $request->input('rc_number');
+        }
 
         if (array_key_exists('address', $validated) && $validated['address'] === null) {
             $validated['address'] = '';
@@ -737,6 +784,9 @@ class ClientController extends Controller
             'name' => $client->name,
             'email' => $client->email,
             'phone' => $client->phone,
+            'personalPhone' => $client->personal_phone ?? $client->phone,
+            'stormPhone' => $client->storm_phone,
+            'rcNumber' => $client->rc_number,
             'address' => $client->address,
             'region' => $client->region,
             'wilaya' => $client->wilaya,
@@ -758,7 +808,7 @@ class ClientController extends Controller
             'lastPaymentStatus' => $client->last_payment_status,
             'lastPaymentOrderNumber' => $client->last_payment_order_number,
             'lastPaymentAccount' => $client->last_payment_account,
-            'lastPayment' => $client->last_payment_amount > 0 ? [
+            'lastPayment' => ($client->last_payment_amount > 0 || $client->last_payment_date) ? [
                 'date' => $client->last_payment_date instanceof \DateTimeInterface ? $client->last_payment_date->toISOString() : ($client->last_payment_date ? (string)$client->last_payment_date : null),
                 'amount' => (float) $client->last_payment_amount,
                 'mode' => $client->last_payment_mode,
@@ -840,12 +890,12 @@ class ClientController extends Controller
         ]);
     }
 
-    public function importEncaissements(Request $request, \App\Services\EncaissementParserService $parserService): JsonResponse
+    public function importEncaissements(Request $request, \App\Services\EncaissementImportService $importService): JsonResponse
     {
         $user = auth('sanctum')->user() ?: $request->user();
         if ($user && !$user->hasPermission('clients.edit') && !$user->hasPermission('clients.create') && !in_array($user->role, ['admin', 'superadmin'])) {
             return response()->json([
-                'message' => "Acc├¿s non autoris├® : vous ne disposez pas des droits requis pour importer des encaissements."
+                'message' => "Accès non autorisé : vous ne disposez pas des droits requis pour importer des encaissements."
             ], 403);
         }
 
@@ -855,9 +905,9 @@ class ClientController extends Controller
         if ($request->hasFile('file')) {
             $file = $request->file('file');
             $extension = strtolower($file->getClientOriginalExtension());
-            if (!in_array($extension, ['xlsx', 'xls'])) {
+            if (!in_array($extension, ['xlsx', 'xls', 'csv'])) {
                 return response()->json([
-                    'message' => 'Le fichier doit ├¬tre au format Excel (.xlsx).'
+                    'message' => 'Le fichier doit être au format Excel (.xlsx, .xls) ou CSV (.csv).'
                 ], 422);
             }
             $filePath = $file->getRealPath();
@@ -882,15 +932,16 @@ class ClientController extends Controller
             }
         } else {
             return response()->json([
-                'message' => 'Veuillez fournir un fichier Excel (.xlsx) ou s├®lectionner use_data_folder.'
+                'message' => 'Veuillez fournir un fichier Excel (.xlsx) ou sélectionner use_data_folder.'
             ], 422);
         }
 
         try {
-            $result = $parserService->importFromFile($filePath, $originalName, $user?->id);
+            $preview = $importService->preview($filePath, $originalName);
+            $result = $importService->execute($preview['file_token'], $preview['suggested_mapping'], 'link_only', $user?->id);
             return response()->json([
                 'success' => true,
-                'message' => "Encaissements import├®s avec succ├¿s. {$result['tiers_count']} clients trait├®s ({$result['clients_updated']} mis ├á jour, {$result['clients_created']} cr├®├®s).",
+                'message' => "Encaissements importés avec succès. {$result['encaissements_imported']} opérations enregistrées ({$result['clients_matched']} clients liés).",
                 'data' => $result,
             ]);
         } catch (\Throwable $e) {
@@ -1031,6 +1082,38 @@ class ClientController extends Controller
         }
     }
 
+    public function extractRegions(Request $request, \App\Services\ClientImportService $importService): JsonResponse
+    {
+        $user = auth('sanctum')->user() ?: $request->user();
+        if ($user && !$user->hasPermission('clients.edit') && !$user->hasPermission('clients.create') && !in_array($user->role, ['admin', 'superadmin'])) {
+            return response()->json([
+                'message' => "Accès non autorisé : vous ne disposez pas des droits requis pour importer des clients."
+            ], 403);
+        }
+
+        $request->validate([
+            'file_token' => 'required|string',
+            'region_column' => 'required|string',
+        ]);
+
+        try {
+            $data = $importService->extractRegions(
+                $request->input('file_token'),
+                $request->input('region_column')
+            );
+
+            return response()->json([
+                'success' => true,
+                'data' => $data,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
     public function importVerify(Request $request, \App\Services\ClientImportService $importService): JsonResponse
     {
         $user = auth('sanctum')->user() ?: $request->user();
@@ -1047,6 +1130,7 @@ class ClientController extends Controller
             'mapping.phone' => 'required|string',
             'duplicate_action' => 'nullable|string|in:update,skip',
             'wilaya_mapping' => 'nullable|array',
+            'region_mapping' => 'nullable|array',
         ]);
 
         try {
@@ -1054,7 +1138,8 @@ class ClientController extends Controller
                 $request->input('file_token'),
                 $request->input('mapping'),
                 $request->input('duplicate_action', 'update'),
-                $request->input('wilaya_mapping', [])
+                $request->input('wilaya_mapping', []),
+                $request->input('region_mapping', [])
             );
 
             return response()->json([
@@ -1085,6 +1170,7 @@ class ClientController extends Controller
             'mapping.phone' => 'required|string',
             'duplicate_action' => 'nullable|string|in:update,skip',
             'wilaya_mapping' => 'nullable|array',
+            'region_mapping' => 'nullable|array',
         ]);
 
         try {
@@ -1093,12 +1179,13 @@ class ClientController extends Controller
                 $request->input('mapping'),
                 $request->input('duplicate_action', 'update'),
                 $user?->id,
-                $request->input('wilaya_mapping', [])
+                $request->input('wilaya_mapping', []),
+                $request->input('region_mapping', [])
             );
 
             return response()->json([
                 'success' => true,
-                'message' => "Importation termin├®e avec succ├¿s : {$result['created_count']} client(s) cr├®├®(s), {$result['updated_count']} mis ├á jour, {$result['skipped_count']} ignor├®(s).",
+                'message' => "Importation terminée avec succès : {$result['created_count']} client(s) créé(s), {$result['updated_count']} mis à jour, {$result['skipped_count']} ignoré(s).",
                 'data' => $result,
             ]);
         } catch (\Throwable $e) {

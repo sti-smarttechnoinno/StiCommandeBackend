@@ -76,14 +76,14 @@ class ReportController extends Controller
         $activeClients = Client::where('status', 'active')->count();
 
         $activeDelegates = User::where(function ($q) {
-            $q->whereIn('role', ['DELEGATE', 'delegate', 'commercial'])
-              ->orWhere('role', 'like', '%delegate%');
+            $q->where('role', 'delegate')
+              ->orWhere('role', 'DELEGATE');
         })->where('is_active', true)->count();
 
         if ($activeDelegates === 0) {
             $activeDelegates = User::where(function ($q) {
-                $q->whereIn('role', ['DELEGATE', 'delegate', 'commercial'])
-                  ->orWhere('role', 'like', '%delegate%');
+                $q->where('role', 'delegate')
+                  ->orWhere('role', 'DELEGATE');
             })->count();
         }
 
@@ -135,6 +135,21 @@ class ReportController extends Controller
             $delegatesSparkline[] = $activeDelegates;
         }
 
+        $realProductIds = Product::pluck('id')->filter()->values()->toArray();
+        $realProductCodes = Product::pluck('code')->filter()->values()->toArray();
+        $productsSold = (int) OrderItem::where(function ($q) use ($realProductIds, $realProductCodes) {
+            if (!empty($realProductIds)) {
+                $q->whereIn('product_id', $realProductIds);
+            }
+            if (!empty($realProductCodes)) {
+                $q->orWhereIn('reference', $realProductCodes);
+            }
+        })->sum('quantity');
+
+        if ($productsSold === 0) {
+            $productsSold = (int) Product::sum('total_sold');
+        }
+
         return response()->json([
             'totalRevenue' => round($totalRevenue, 2),
             'revenueGrowth' => $revenueGrowth,
@@ -146,6 +161,7 @@ class ReportController extends Controller
             'avgOrderGrowth' => 0.0,
             'activeClients' => $activeClients,
             'activeDelegates' => $activeDelegates,
+            'productsSold' => $productsSold,
             'ordersSparkline' => $ordersSparkline,
             'revenueSparkline' => $revenueSparkline,
             'pendingSparkline' => $pendingSparkline,
@@ -368,7 +384,12 @@ class ReportController extends Controller
      */
     public function topDelegates()
     {
-        $delegates = Order::select('delegate_name', DB::raw('SUM(total_amount) as total_sales'), DB::raw('COUNT(*) as total_orders'))
+        $delegates = Order::select(
+            'delegate_name',
+            DB::raw('MAX(region) as region'),
+            DB::raw('SUM(total_amount) as total_sales'),
+            DB::raw('COUNT(*) as total_orders')
+        )
             ->whereNotNull('delegate_name')
             ->where('delegate_name', '!=', '')
             ->where('status', '!=', 'cancelled')
@@ -383,7 +404,7 @@ class ReportController extends Controller
                 'name' => $d->delegate_name,
                 'sales' => (float) $d->total_sales,
                 'orders' => (int) $d->total_orders,
-                'region' => 'Alger Center',
+                'region' => $d->region ?: 'Non assignée',
                 'targetAchievement' => min(100, round(($d->total_sales / 250000) * 100, 1)),
             ];
         });
@@ -392,25 +413,126 @@ class ReportController extends Controller
     }
 
     /**
-     * Get Best Selling Products ranking.
+     * Get Best Selling Products ranking from real DB products catalog.
      */
     public function bestProducts()
     {
-        $best = OrderItem::select('product_name', DB::raw('SUM(subtotal) as total_sales'), DB::raw('SUM(quantity) as total_units'))
-            ->whereNotNull('product_name')
+        // Get valid product IDs and codes from the real catalog (Product table)
+        $realProducts = Product::all();
+        $realProductIds = $realProducts->pluck('id')->filter()->values()->toArray();
+        $realProductCodes = $realProducts->pluck('code')->filter()->values()->toArray();
+
+        // If no products exist in catalog, return empty
+        if ($realProducts->isEmpty()) {
+            return response()->json([]);
+        }
+
+        // Aggregate sales strictly for real products from OrderItem
+        $best = OrderItem::select(
+            'product_name',
+            DB::raw('MAX(product_id) as product_id'),
+            DB::raw('MAX(reference) as reference'),
+            DB::raw('SUM(subtotal) as total_sales'),
+            DB::raw('SUM(quantity) as total_units')
+        )
+            ->where(function ($query) use ($realProductIds, $realProductCodes) {
+                if (!empty($realProductIds)) {
+                    $query->whereIn('product_id', $realProductIds);
+                }
+                if (!empty($realProductCodes)) {
+                    $query->orWhereIn('reference', $realProductCodes);
+                }
+            })
             ->groupBy('product_name')
             ->orderBy('total_sales', 'desc')
-            ->limit(5)
+            ->limit(10)
             ->get();
 
-        $transformed = $best->map(function ($p, $idx) {
+        // Preload products for fast lookup
+        $productsById = $realProducts->keyBy('id');
+        $productsByCode = $realProducts->keyBy('code');
+
+        // If no OrderItems match yet, fallback directly to products having revenue or total_sold in Product table
+        if ($best->isEmpty()) {
+            $catalogWithSales = $realProducts->filter(function ($p) {
+                return ($p->total_sold > 0) || ($p->revenue > 0);
+            })->sortByDesc('revenue')->values();
+
+            $totalCatalogRevenue = $catalogWithSales->sum('revenue') ?: 1;
+
+            $fallbackTransformed = $catalogWithSales->map(function ($product, $idx) use ($totalCatalogRevenue) {
+                $cat = strtolower($product->category ?? '');
+                if ($cat === 'mobile_recharge' || str_contains($cat, 'recharge')) {
+                    $category = 'Recharge Mobile';
+                } elseif ($cat === 'sim_cards' || str_contains($cat, 'sim')) {
+                    $category = 'Cartes SIM';
+                } elseif ($cat === 'devices' || str_contains($cat, 'device')) {
+                    $category = 'Terminaux';
+                } elseif (!empty($cat)) {
+                    $category = ucwords(str_replace(['_', '-'], ' ', $cat));
+                } else {
+                    $category = 'Télécom';
+                }
+
+                $sharePercent = round(($product->revenue / $totalCatalogRevenue) * 100, 1);
+
+                return [
+                    'id' => (string) ($idx + 1),
+                    'name' => $product->name,
+                    'reference' => $product->code,
+                    'sales' => (float) $product->revenue,
+                    'units' => (int) $product->total_sold,
+                    'category' => $category,
+                    'operator' => $product->operator,
+                    'growth' => $sharePercent . '% du vol.',
+                    'share' => $sharePercent,
+                ];
+            });
+
+            return response()->json($fallbackTransformed);
+        }
+
+        $totalSalesReal = $best->sum('total_sales') ?: 1;
+
+        $transformed = $best->map(function ($p, $idx) use ($totalSalesReal, $productsById, $productsByCode) {
+            $product = null;
+            if ($p->product_id && isset($productsById[$p->product_id])) {
+                $product = $productsById[$p->product_id];
+            } elseif ($p->reference && isset($productsByCode[$p->reference])) {
+                $product = $productsByCode[$p->reference];
+            }
+
+            // Category & Operator resolution strictly from Product
+            $category = 'Recharge Mobile';
+            $operator = null;
+
+            if ($product) {
+                $cat = strtolower($product->category ?? '');
+                if ($cat === 'mobile_recharge' || str_contains($cat, 'recharge')) {
+                    $category = 'Recharge Mobile';
+                } elseif ($cat === 'sim_cards' || str_contains($cat, 'sim')) {
+                    $category = 'Cartes SIM';
+                } elseif ($cat === 'devices' || str_contains($cat, 'device')) {
+                    $category = 'Terminaux';
+                } elseif (!empty($cat)) {
+                    $category = ucwords(str_replace(['_', '-'], ' ', $cat));
+                }
+                $operator = $product->operator;
+            }
+
+            // Real share of sales among real products
+            $sharePercent = round(($p->total_sales / $totalSalesReal) * 100, 1);
+
             return [
                 'id' => (string) ($idx + 1),
-                'name' => $p->product_name,
+                'name' => $product ? $product->name : $p->product_name,
+                'reference' => $product ? $product->code : $p->reference,
                 'sales' => (float) $p->total_sales,
                 'units' => (int) $p->total_units,
-                'category' => 'SIM Cards',
-                'growth' => '+14.2%',
+                'category' => $category,
+                'operator' => $operator,
+                'growth' => $sharePercent . '% du vol.',
+                'share' => $sharePercent,
             ];
         });
 
@@ -468,5 +590,156 @@ class ReportController extends Controller
         }
 
         return response()->json(['message' => 'Invalid bulk action'], 400);
+    }
+
+    /**
+     * Get detailed clients by region report (with Wilaya, Last Encaissement, Outstanding Balance, Subtotals).
+     */
+    public function clientsByRegionReport(Request $request)
+    {
+        $regionFilter = $request->query('region');
+        $debtOnly = filter_var($request->query('debt_only', false), FILTER_VALIDATE_BOOLEAN);
+        $minSolde = $request->query('min_solde') !== null && $request->query('min_solde') !== ''
+            ? (float) $request->query('min_solde')
+            : null;
+        $search = $request->query('search');
+        $sortBy = $request->query('sort_by', 'wilaya');
+
+        $query = Client::query()->select([
+            'id',
+            'client_code',
+            'name',
+            'phone',
+            'personal_phone',
+            'storm_phone',
+            'rc_number',
+            'wilaya',
+            'region',
+            'address',
+            'status',
+            'client_type',
+            'credit_limit',
+            'outstanding_balance',
+            'last_payment_date',
+            'last_payment_amount',
+            'last_payment_mode',
+            'last_payment_reference',
+            'last_payment_status',
+            'last_payment_order_number',
+            'last_payment_account',
+            'delegate_id',
+        ]);
+
+        if (!empty($regionFilter) && $regionFilter !== 'all' && !str_starts_with(strtolower(trim($regionFilter)), 'toutes')) {
+            $query->whereRaw('LOWER(TRIM(region)) = ?', [strtolower(trim($regionFilter))]);
+        }
+
+        if ($minSolde !== null && $minSolde > 0) {
+            $query->where('outstanding_balance', '>=', $minSolde);
+        } elseif ($debtOnly) {
+            $query->where('outstanding_balance', '>', 0);
+        }
+
+        if (!empty($search)) {
+            $s = trim($search);
+            $query->where(function ($q) use ($s) {
+                $q->where('name', 'like', "%{$s}%")
+                  ->orWhere('client_code', 'like', "%{$s}%")
+                  ->orWhere('phone', 'like', "%{$s}%")
+                  ->orWhere('personal_phone', 'like', "%{$s}%")
+                  ->orWhere('storm_phone', 'like', "%{$s}%")
+                  ->orWhere('rc_number', 'like', "%{$s}%")
+                  ->orWhere('wilaya', 'like', "%{$s}%");
+            });
+        }
+
+        // Sorting
+        if ($sortBy === 'balance_desc') {
+            $query->orderBy('region')->orderByDesc('outstanding_balance')->orderBy('wilaya');
+        } elseif ($sortBy === 'name') {
+            $query->orderBy('region')->orderBy('name');
+        } else {
+            // default: wilaya, then client name
+            $query->orderBy('region')->orderBy('wilaya')->orderBy('name');
+        }
+
+        $clients = $query->with('delegate')->get();
+
+        // Group by Region
+        $grouped = $clients->groupBy(function ($client) {
+            return !empty(trim((string)$client->region)) ? trim($client->region) : 'Non assigné';
+        });
+
+        $regionsReport = [];
+        $globalTotalSolde = 0.0;
+        $globalTotalPayments = 0.0;
+        $globalClientsCount = 0;
+        $globalDebtorsCount = 0;
+
+        foreach ($grouped as $regName => $regClients) {
+            $regTotalSolde = (float) $regClients->sum('outstanding_balance');
+            $regTotalPayments = (float) $regClients->sum('last_payment_amount');
+            $regCount = $regClients->count();
+            $regDebtors = $regClients->where('outstanding_balance', '>', 0)->count();
+
+            $globalTotalSolde += $regTotalSolde;
+            $globalTotalPayments += $regTotalPayments;
+            $globalClientsCount += $regCount;
+            $globalDebtorsCount += $regDebtors;
+
+            // Find primary delegate for region if any
+            $primaryDelegate = $regClients->first(fn($c) => !empty($c->delegate))?->delegate?->name;
+
+            $regionsReport[] = [
+                'region' => $regName,
+                'delegate_name' => $primaryDelegate ?? 'Non assigné',
+                'clients_count' => $regCount,
+                'debtors_count' => $regDebtors,
+                'total_solde' => round($regTotalSolde, 2),
+                'total_last_payments' => round($regTotalPayments, 2),
+                'clients' => $regClients->map(function ($c) {
+                    return [
+                        'id' => (string) $c->id,
+                        'client_code' => $c->client_code,
+                        'name' => $c->name,
+                        'phone' => $c->personal_phone ?: $c->phone,
+                        'storm_phone' => $c->storm_phone,
+                        'rc_number' => $c->rc_number,
+                        'wilaya' => $c->wilaya,
+                        'address' => $c->address,
+                        'status' => $c->status ?? 'active',
+                        'client_type' => $c->client_type,
+                        'solde' => (float) $c->outstanding_balance,
+                        'last_payment_date' => $c->last_payment_date ? \Carbon\Carbon::parse($c->last_payment_date)->format('d/m/Y') : null,
+                        'last_payment_amount' => (float) $c->last_payment_amount,
+                        'last_payment_mode' => $c->last_payment_mode,
+                        'last_payment_reference' => $c->last_payment_reference,
+                        'last_payment_status' => $c->last_payment_status,
+                    ];
+                })->values()->all(),
+            ];
+        }
+
+        // Sort regions alphabetically
+        usort($regionsReport, fn($a, $b) => strcmp($a['region'], $b['region']));
+
+        $lastImport = \App\Models\EncaissementImport::latest()->first();
+
+        return response()->json([
+            'meta' => [
+                'generated_at' => now()->format('d/m/Y H:i'),
+                'generated_at_iso' => now()->toISOString(),
+                'last_import_at' => $lastImport ? \Carbon\Carbon::parse($lastImport->created_at)->format('d/m/Y H:i') : null,
+                'total_regions' => count($regionsReport),
+                'total_clients' => $globalClientsCount,
+                'total_debtors' => $globalDebtorsCount,
+                'total_solde' => round($globalTotalSolde, 2),
+                'total_last_payments' => round($globalTotalPayments, 2),
+                'filter_region' => $regionFilter ?: 'all',
+                'filter_debt_only' => $debtOnly,
+                'filter_min_solde' => $minSolde,
+            ],
+            'regions' => $regionsReport,
+        ]);
     }
 }

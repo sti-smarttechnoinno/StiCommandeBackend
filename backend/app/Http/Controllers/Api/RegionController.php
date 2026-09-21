@@ -72,9 +72,30 @@ class RegionController extends Controller
 
         // 1. Regional Revenue Share
         $totalSystemRevenue = 0;
-        $regionalRevenue = $regions->map(function ($r) use ($allWilayas, $allClients, $allOrders, &$totalSystemRevenue) {
-            $wilayaNames = $allWilayas->filter(function ($w) use ($r) {
-                return $w->region_name === $r->name || $w->region_id === $r->code || $w->custom_region_id == $r->id;
+        $pivotMap = \Illuminate\Support\Facades\DB::table('region_wilaya')
+            ->get()
+            ->groupBy('region_id')
+            ->map(fn ($rows) => $rows->pluck('wilaya_id')->toArray());
+
+        $colorPalette = [
+            '#2563EB', // Blue
+            '#10B981', // Emerald
+            '#F59E0B', // Amber
+            '#8B5CF6', // Purple
+            '#EC4899', // Pink
+            '#06B6D4', // Cyan
+            '#EF4444', // Red
+            '#F97316', // Orange
+        ];
+
+        $usedColors = [];
+        $regionalRevenue = $regions->values()->map(function ($r, $idx) use ($allWilayas, $allClients, $allOrders, $pivotMap, &$totalSystemRevenue, $colorPalette, &$usedColors) {
+            $assignedWilayaIds = $pivotMap->get($r->id, []);
+            $wilayaNames = $allWilayas->filter(function ($w) use ($r, $assignedWilayaIds) {
+                return in_array($w->id, $assignedWilayaIds)
+                    || $w->region_name === $r->name
+                    || $w->region_id === $r->code
+                    || $w->custom_region_id == $r->id;
             })->pluck('name')->toArray();
 
             $ordersRevenue = (float) $allOrders->filter(function ($o) use ($r, $wilayaNames) {
@@ -90,10 +111,16 @@ class RegionController extends Controller
             $rev = max($ordersRevenue, $clientsRevenue);
             $totalSystemRevenue += $rev;
 
+            $c = $r->color;
+            if (!$c || in_array(strtolower($c), $usedColors)) {
+                $c = $colorPalette[$idx % count($colorPalette)];
+            }
+            $usedColors[] = strtolower($c);
+
             return [
                 'name' => $r->name,
                 'value' => $rev,
-                'color' => $r->color ?? '#2563EB',
+                'color' => $c,
             ];
         });
 
@@ -218,14 +245,11 @@ class RegionController extends Controller
 
         $region = Region::create($validated);
 
-        // Customize Wilayas assigned to this region
+        // Assign Wilayas to this region via Many-to-Many pivot table
         if (! empty($request->input('wilaya_codes'))) {
             $codes = $request->input('wilaya_codes');
-            Wilaya::whereIn('code', $codes)->update([
-                'region_name' => $region->name,
-                'region_id' => $region->code,
-                'custom_region_id' => $region->id,
-            ]);
+            $wilayaIds = Wilaya::whereIn('code', $codes)->pluck('id');
+            $region->wilayas()->sync($wilayaIds);
         }
 
         // Customize Delegates assigned to this region
@@ -266,29 +290,11 @@ class RegionController extends Controller
         $oldName = $region->name;
         $region->update($validated);
 
-        // Customize & update Wilayas assigned to this region
+        // Customize & update Wilayas assigned to this region via pivot table (supports many-to-many)
         if ($request->has('wilaya_codes')) {
             $codes = $request->input('wilaya_codes', []);
-            // Unassign wilayas previously in this region that were deselected
-            $deselectedCodes = Wilaya::where('custom_region_id', $region->id)
-                ->whereNotIn('code', $codes)
-                ->pluck('code')
-                ->toArray();
-            if (! empty($deselectedCodes)) {
-                Wilaya::resetToDefaults($deselectedCodes);
-            }
-
-            if (! empty($codes)) {
-                Wilaya::whereIn('code', $codes)->update([
-                    'region_name' => $region->name,
-                    'region_id' => $region->code,
-                    'custom_region_id' => $region->id,
-                ]);
-            }
-        } elseif ($oldName !== $region->name) {
-            Wilaya::where('region_name', $oldName)->update([
-                'region_name' => $region->name,
-            ]);
+            $wilayaIds = empty($codes) ? [] : Wilaya::whereIn('code', $codes)->pluck('id');
+            $region->wilayas()->sync($wilayaIds);
         }
 
         // Customize & update Delegates assigned to this region
@@ -313,11 +319,7 @@ class RegionController extends Controller
 
     public function destroy(Region $region): JsonResponse
     {
-        $wilayaCodes = Wilaya::where('custom_region_id', $region->id)->pluck('code')->toArray();
-        if (! empty($wilayaCodes)) {
-            Wilaya::resetToDefaults($wilayaCodes);
-        }
-
+        $region->wilayas()->detach();
         $region->delete();
 
         return response()->json(['message' => 'Region deleted successfully']);
@@ -334,7 +336,7 @@ class RegionController extends Controller
 
         $allDelegates = User::whereIn('role', ['delegate', 'commercial'])->get();
 
-        // 2. Mapped Wilayas: explicitly assigned to this custom region OR covered by delegates of this region
+        // 2. Mapped Wilayas: explicitly assigned to this custom region via pivot table OR covered by delegates of this region
         $delegateWilayaPatterns = [];
         foreach ($regionDelegates as $del) {
             if (!empty($del->wilaya)) {
@@ -347,10 +349,18 @@ class RegionController extends Controller
             }
         }
 
-        $wilayasQuery = Wilaya::where('custom_region_id', $region->id);
+        $wilayasQuery = Wilaya::where(function ($q) use ($region) {
+            $q->whereHas('regions', function ($rq) use ($region) {
+                $rq->where('regions.id', $region->id);
+            })->orWhere('custom_region_id', $region->id);
+        });
+
         if (!empty($delegateWilayaPatterns)) {
             $wilayasQuery = Wilaya::where(function ($q) use ($region, $delegateWilayaPatterns) {
-                $q->where('custom_region_id', $region->id);
+                $q->whereHas('regions', function ($rq) use ($region) {
+                    $rq->where('regions.id', $region->id);
+                })->orWhere('custom_region_id', $region->id);
+
                 foreach ($delegateWilayaPatterns as $pat) {
                     if (preg_match('/^(\d+)\s*-\s*(.+)$/', $pat, $matches)) {
                         $code = trim($matches[1]);
@@ -369,11 +379,10 @@ class RegionController extends Controller
         if ($wilayas->isEmpty()) {
             $baseCodes = ['center', 'east', 'west', 'south'];
             if (in_array(strtolower($region->code), $baseCodes)) {
-                $wilayas = Wilaya::whereNull('custom_region_id')
-                    ->where(function ($q) use ($region) {
-                        $q->where('region_id', strtolower($region->code))
-                          ->orWhereRaw('LOWER(region_name) = ?', [strtolower($region->name)]);
-                    })->get();
+                $wilayas = Wilaya::where(function ($q) use ($region) {
+                    $q->where('region_id', strtolower($region->code))
+                      ->orWhereRaw('LOWER(region_name) = ?', [strtolower($region->name)]);
+                })->get();
             }
         }
 

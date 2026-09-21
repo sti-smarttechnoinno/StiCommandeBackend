@@ -81,6 +81,11 @@ class FirebaseService
      */
     public function sendPush(string $recipient, string $title, string $body, array $data = []): bool
     {
+        $recipient = trim($recipient);
+        if (empty($recipient)) {
+            return false;
+        }
+
         $stringData = [];
         foreach ($data as $k => $v) {
             $stringData[$k] = is_null($v) ? '' : (string) $v;
@@ -115,6 +120,26 @@ class FirebaseService
                                 'default_sound' => true,
                                 'default_vibrate_timings' => true,
                                 'click_action' => 'FLUTTER_NOTIFICATION_CLICK',
+                                'notification_priority' => 'PRIORITY_MAX',
+                                'visibility' => 'PUBLIC',
+                                'icon' => '@mipmap/ic_launcher',
+                            ],
+                        ],
+                        'apns' => [
+                            'headers' => [
+                                'apns-priority' => '10',
+                                'apns-push-type' => 'alert',
+                            ],
+                            'payload' => [
+                                'aps' => [
+                                    'alert' => [
+                                        'title' => $title,
+                                        'body' => $body,
+                                    ],
+                                    'sound' => 'default',
+                                    'badge' => 1,
+                                    'content-available' => 1,
+                                ],
                             ],
                         ],
                         'data' => array_merge($stringData, [
@@ -146,6 +171,30 @@ class FirebaseService
         }
 
         return false;
+    }
+
+    /**
+     * Send push notification to multiple device tokens and/or topics
+     */
+    public function sendMulticast(array $recipients, string $title, string $body, array $data = []): array
+    {
+        $uniqueRecipients = array_unique(array_filter(array_map('trim', $recipients)));
+        $results = [
+            'total' => count($uniqueRecipients),
+            'success' => 0,
+            'failed' => 0,
+        ];
+
+        foreach ($uniqueRecipients as $recipient) {
+            $ok = $this->sendPush($recipient, $title, $body, $data);
+            if ($ok) {
+                $results['success']++;
+            } else {
+                $results['failed']++;
+            }
+        }
+
+        return $results;
     }
 
     /**

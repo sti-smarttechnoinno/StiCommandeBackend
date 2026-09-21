@@ -489,16 +489,46 @@ class NotificationController extends Controller
         $userTarget = 'All Delegates';
         $recipientToken = '/topics/sti_delegates';
 
+        $recipients = [];
+
         if ($targetType === 'region' && $targetId) {
             $region = $targetId;
             $userTarget = 'Région: ' . $targetId;
+            $cleanRegion = strtolower(str_replace(' ', '_', $targetId));
+            $recipients[] = "/topics/region_{$cleanRegion}";
+            
+            // Also collect direct tokens of delegates in this region
+            $regionTokens = \App\Models\User::where('role', 'delegate')
+                ->where(function ($q) use ($targetId) {
+                    $q->where('region', $targetId)->orWhere('wilaya', 'LIKE', "%{$targetId}%");
+                })
+                ->whereNotNull('fcm_token')
+                ->where('fcm_token', '!=', '')
+                ->pluck('fcm_token')
+                ->toArray();
+            $recipients = array_merge($recipients, $regionTokens);
         } elseif ($targetType === 'delegate' && $targetId) {
             $delegateUser = \App\Models\User::find($targetId);
             if ($delegateUser) {
                 $userTarget = $delegateUser->name;
                 $region = $delegateUser->region ?? 'All';
-                $recipientToken = $delegateUser->fcm_token ?? '/topics/sti_delegates';
+                if (!empty($delegateUser->fcm_token)) {
+                    $recipients[] = $delegateUser->fcm_token;
+                } else {
+                    $recipients[] = '/topics/sti_delegates';
+                }
             }
+        } else {
+            // Target: All delegates
+            $recipients[] = '/topics/sti_delegates';
+            
+            // Also collect all registered delegate device tokens directly
+            $allTokens = \App\Models\User::where('role', 'delegate')
+                ->whereNotNull('fcm_token')
+                ->where('fcm_token', '!=', '')
+                ->pluck('fcm_token')
+                ->toArray();
+            $recipients = array_merge($recipients, $allTokens);
         }
 
         $notification = Notification::create([
@@ -514,20 +544,33 @@ class NotificationController extends Controller
             'read' => false,
         ]);
 
-        // Dispatch FCM Push Notification (HTTP v1)
+        // Dispatch FCM Push Notification (HTTP v1) to all target recipients
         try {
-            app(\App\Services\FirebaseService::class)->sendPush(
-                $recipientToken,
+            $firebaseService = app(\App\Services\FirebaseService::class);
+            $pushData = [
+                'type' => 'broadcast_message',
+                'broadcast_id' => (string) $notification->id,
+                'category' => $category,
+                'priority' => $priority,
+                'title' => $validated['title'],
+                'body' => $validated['body'],
+                'click_action' => 'FLUTTER_NOTIFICATION_CLICK',
+            ];
+
+            $uniqueRecipients = array_unique(array_filter($recipients));
+            $dispatchResults = $firebaseService->sendMulticast(
+                $uniqueRecipients,
                 $validated['title'],
                 $validated['body'],
-                [
-                    'type' => 'broadcast_message',
-                    'broadcast_id' => (string) $notification->id,
-                    'category' => $category,
-                    'priority' => $priority,
-                    'click_action' => 'FLUTTER_NOTIFICATION_CLICK',
-                ]
+                $pushData
             );
+
+            \Illuminate\Support\Facades\Log::info("Broadcast push dispatched", [
+                'target' => $userTarget,
+                'recipients_count' => count($uniqueRecipients),
+                'success' => $dispatchResults['success'],
+                'failed' => $dispatchResults['failed'],
+            ]);
         } catch (\Throwable $e) {
             \Illuminate\Support\Facades\Log::warning("Broadcast FCM push dispatch error: " . $e->getMessage());
         }

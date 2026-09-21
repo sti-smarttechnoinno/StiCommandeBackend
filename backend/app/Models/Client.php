@@ -12,6 +12,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string $name
  * @property string|null $email
  * @property string $phone
+ * @property string|null $personal_phone
+ * @property string|null $storm_phone
+ * @property string|null $rc_number
  * @property string $address
  * @property string $region
  * @property string $wilaya
@@ -37,6 +40,9 @@ class Client extends Model
         'name',
         'email',
         'phone',
+        'personal_phone',
+        'storm_phone',
+        'rc_number',
         'address',
         'region',
         'wilaya',

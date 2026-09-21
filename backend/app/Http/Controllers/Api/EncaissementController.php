@@ -65,6 +65,11 @@ class EncaissementController extends Controller
             $query->whereDate('payment_date', '<=', Carbon::parse($dateTo)->endOfDay());
         }
 
+        // 7. Filter by Last Encaissement (is_last)
+        if ($request->boolean('is_last') || $request->boolean('only_last') || $request->input('filter') === 'last') {
+            $query->where('is_last', true);
+        }
+
         // 7. Calculate Filtered KPIs
         $kpiQuery = clone $query;
         $kpisData = $kpiQuery->selectRaw('
@@ -86,7 +91,7 @@ class EncaissementController extends Controller
         $sortBy = $request->input('sort_by', $request->input('sortBy', 'payment_date'));
         $sortDir = strtolower($request->input('sort_dir', $request->input('sortDir', 'desc'))) === 'asc' ? 'asc' : 'desc';
 
-        $allowedSorts = ['payment_date', 'amount', 'credit', 'debit', 'order_number', 'tiers_name', 'account', 'type'];
+        $allowedSorts = ['payment_date', 'amount', 'credit', 'debit', 'order_number', 'tiers_name', 'account', 'type', 'is_last'];
         if (!in_array($sortBy, $allowedSorts)) {
             $sortBy = 'payment_date';
         }
@@ -147,4 +152,124 @@ class EncaissementController extends Controller
             'types' => ['Encaissement', 'Décaissement'],
         ]);
     }
+
+    /**
+     * Preview encaissements file and return suggested column mapping.
+     */
+    public function importPreview(Request $request, \App\Services\EncaissementImportService $importService): JsonResponse
+    {
+        $user = auth('sanctum')->user() ?: $request->user();
+        if ($user && !$user->hasPermission('clients.edit') && !$user->hasPermission('clients.create') && !in_array($user->role, ['admin', 'superadmin'])) {
+            return response()->json([
+                'message' => "Accès non autorisé : vous ne disposez pas des droits requis pour importer des encaissements."
+            ], 403);
+        }
+
+        if ($request->hasFile('file')) {
+            $file = $request->file('file');
+            $data = $importService->preview($file);
+            return response()->json([
+                'success' => true,
+                'data' => $data,
+            ]);
+        }
+
+        if ($request->boolean('use_data_folder') || $request->input('from_data')) {
+            $candidates = [
+                base_path('../data/encaissement.xlsx'),
+                base_path('data/encaissement.xlsx'),
+                'c:/Users/pc -006/Desktop/StiCommande/data/encaissement.xlsx',
+            ];
+            $foundPath = null;
+            foreach ($candidates as $cand) {
+                if (file_exists($cand)) {
+                    $foundPath = $cand;
+                    break;
+                }
+            }
+            if (!$foundPath) {
+                return response()->json([
+                    'message' => "Le fichier data/encaissement.xlsx est introuvable sur le serveur."
+                ], 404);
+            }
+            $data = $importService->preview($foundPath, basename($foundPath));
+            return response()->json([
+                'success' => true,
+                'data' => $data,
+            ]);
+        }
+
+        return response()->json([
+            'message' => "Veuillez fournir un fichier Excel (.xlsx, .xls) ou sélectionner le fichier serveur.",
+            'errors' => [
+                'file' => ["Le fichier d'encaissement est obligatoire."]
+            ]
+        ], 422);
+    }
+
+    /**
+     * Verify client matches and existence before committing import.
+     */
+    public function importVerify(Request $request, \App\Services\EncaissementImportService $importService): JsonResponse
+    {
+        $request->validate([
+            'file_token' => 'required|string',
+            'mapping' => 'required|array',
+            'unmatched_action' => 'nullable|string|in:link_only,create,skip',
+        ]);
+
+        try {
+            $data = $importService->verify(
+                $request->input('file_token'),
+                $request->input('mapping'),
+                $request->input('unmatched_action', 'link_only')
+            );
+
+            return response()->json([
+                'success' => true,
+                'data' => $data,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
+     * Execute final import of encaissements and link to clients.
+     */
+    public function importExecute(Request $request, \App\Services\EncaissementImportService $importService): JsonResponse
+    {
+        $request->validate([
+            'file_token' => 'required|string',
+            'mapping' => 'required|array',
+            'unmatched_action' => 'nullable|string|in:link_only,create,skip',
+        ]);
+
+        $user = auth('sanctum')->user() ?: $request->user();
+
+        try {
+            $data = $importService->execute(
+                $request->input('file_token'),
+                $request->input('mapping'),
+                $request->input('unmatched_action', 'link_only'),
+                $user?->id
+            );
+
+            $formattedCredit = number_format($data['total_amount_credited'], 2, ',', ' ') . ' DA';
+            return response()->json([
+                'success' => true,
+                'message' => "Importation terminée avec succès. {$data['encaissements_imported']} encaissements enregistrés ({$data['clients_matched']} clients liés, {$data['clients_created']} créés). Total : {$formattedCredit}.",
+                'data' => $data,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => "Erreur lors de l'importation : " . $e->getMessage(),
+            ], 500);
+        }
+    }
 }
+

@@ -55,7 +55,15 @@ class WilayaController extends Controller
         }
 
         if ($regions = $request->input('region')) {
-            $query->whereIn('region_id', (array) $regions);
+            $regionsList = (array) $regions;
+            $query->where(function ($q) use ($regionsList) {
+                $q->whereIn('region_id', $regionsList)
+                  ->orWhereHas('regions', function ($rq) use ($regionsList) {
+                      $rq->whereIn('regions.code', $regionsList)
+                        ->orWhereIn('regions.id', $regionsList)
+                        ->orWhereIn('regions.name', $regionsList);
+                  });
+            });
         }
 
         if ($statuses = $request->input('status')) {

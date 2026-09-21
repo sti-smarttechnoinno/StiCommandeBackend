@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Client;
+use App\Models\Region;
 use App\Models\User;
 use App\Models\Wilaya;
 use Illuminate\Http\UploadedFile;
@@ -116,6 +117,132 @@ class ClientImportService
     }
 
     /**
+     * Extract distinct regions from uploaded file and perform intelligent matching against DB regions.
+     */
+    public function extractRegions(string $fileToken, string $regionColumn): array
+    {
+        ini_set('memory_limit', '512M');
+        set_time_limit(180);
+
+        $pattern = "{$this->tempDir}/{$fileToken}.*";
+        $matches = glob($pattern);
+        if (empty($matches) || !file_exists($matches[0])) {
+            throw new \RuntimeException("Fichier d'importation introuvable ou session expirée. Veuillez réimporter votre fichier.");
+        }
+
+        $filePath = $matches[0];
+        $ext = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
+        $allRows = $this->readAllDataRows($filePath, $ext);
+
+        $distinctMap = [];
+        foreach ($allRows as $row) {
+            $raw = trim($row[$regionColumn] ?? '');
+            if ($raw === '') {
+                continue;
+            }
+            if (!isset($distinctMap[$raw])) {
+                $distinctMap[$raw] = 0;
+            }
+            $distinctMap[$raw]++;
+        }
+
+        // Load all active Regions from DB
+        $dbRegions = Region::orderBy('name')->get(['id', 'code', 'name', 'color', 'icon']);
+        if ($dbRegions->isEmpty()) {
+            $dbRegions = collect([
+                (object)['id' => 1, 'code' => 'center', 'name' => 'Centre', 'color' => '#2563EB', 'icon' => '🗺️'],
+                (object)['id' => 2, 'code' => 'east', 'name' => 'Est', 'color' => '#10B981', 'icon' => '🗺️'],
+                (object)['id' => 3, 'code' => 'west', 'name' => 'Ouest', 'color' => '#F59E0B', 'icon' => '🗺️'],
+                (object)['id' => 4, 'code' => 'south', 'name' => 'Sud', 'color' => '#EF4444', 'icon' => '🗺️'],
+            ]);
+        }
+
+        $results = [];
+        foreach ($distinctMap as $rawVal => $count) {
+            $match = $this->matchRegion($rawVal, $dbRegions);
+            $results[] = [
+                'file_value' => $rawVal,
+                'count' => $count,
+                'matched_region_id' => $match['region']?->id,
+                'matched_region_name' => $match['region']?->name ?? ($dbRegions->first()->name ?? 'Centre'),
+                'confidence' => $match['confidence'],
+            ];
+        }
+
+        // Sort results by count descending
+        usort($results, fn($a, $b) => $b['count'] <=> $a['count']);
+
+        return [
+            'distinct_regions' => $results,
+            'db_regions' => $dbRegions->map(fn($r) => [
+                'id' => $r->id,
+                'code' => $r->code,
+                'name' => $r->name,
+                'color' => $r->color ?? '#2563EB',
+                'icon' => $r->icon ?? '🗺️',
+            ])->values()->all(),
+        ];
+    }
+
+    /**
+     * Smart match raw file string to official DB Region.
+     */
+    protected function matchRegion(string $raw, $dbRegions): array
+    {
+        $cleanRaw = trim($raw);
+        $norm = $this->normalizeRegionKey($cleanRaw);
+
+        // 1. Exact normalized name match or code match
+        foreach ($dbRegions as $r) {
+            if ($this->normalizeRegionKey($r->name) === $norm || $this->normalizeRegionKey($r->code) === $norm) {
+                return ['region' => $r, 'confidence' => 'exact'];
+            }
+        }
+
+        // 2. Partial/fuzzy substring match
+        foreach ($dbRegions as $r) {
+            $normR = $this->normalizeRegionKey($r->name);
+            if (!empty($norm) && (str_contains($normR, $norm) || str_contains($norm, $normR))) {
+                return ['region' => $r, 'confidence' => 'auto'];
+            }
+        }
+
+        // 3. Known aliases: e.g. center/centre, alger, etc.
+        $aliases = [
+            'alger' => 'centre', 'algiers' => 'centre', 'centre' => 'center',
+            'oran' => 'ouest', 'west' => 'ouest',
+            'constantine' => 'est', 'east' => 'est',
+            'sahara' => 'sud', 'south' => 'sud',
+        ];
+        if (isset($aliases[$norm])) {
+            $target = $aliases[$norm];
+            foreach ($dbRegions as $r) {
+                $normR = $this->normalizeRegionKey($r->name);
+                $normCode = $this->normalizeRegionKey($r->code);
+                if (str_contains($normR, $target) || str_contains($normCode, $target)) {
+                    return ['region' => $r, 'confidence' => 'auto'];
+                }
+            }
+        }
+
+        return ['region' => $dbRegions->first(), 'confidence' => 'none'];
+    }
+
+    /**
+     * Normalize region name for matching (lowercase, no accents, alphanumeric only).
+     */
+    protected function normalizeRegionKey(string $str): string
+    {
+        $str = mb_strtolower(trim($str));
+        $unaccented = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $str);
+        if ($unaccented !== false) {
+            $str = $unaccented;
+        }
+        $str = preg_replace('/^(r\.|region\s+de\s+|region\s+|zone\s+de\s+|zone\s+)/i', '', $str);
+        return preg_replace('/[^a-z0-9]/', '', $str);
+    }
+
+    /**
      * Smart match raw file string to official DB Wilaya.
      */
     protected function matchWilaya(string $raw, $dbWilayas): array
@@ -216,7 +343,7 @@ class ClientImportService
     /**
      * Verify the import configuration, inspect duplicates, and compute exact projection before committing.
      */
-    public function verify(string $fileToken, array $mapping, string $duplicateAction = 'update', array $wilayaMapping = []): array
+    public function verify(string $fileToken, array $mapping, string $duplicateAction = 'update', array $wilayaMapping = [], array $regionMapping = []): array
     {
         ini_set('memory_limit', '512M');
         set_time_limit(180);
@@ -235,7 +362,9 @@ class ClientImportService
         $allRows = $this->readAllDataRows($filePath, $ext);
 
         $nameCol = $mapping['name'] ?? null;
-        $phoneCol = $mapping['phone'] ?? null;
+        $phoneCol = $mapping['phone'] ?? ($mapping['personal_phone'] ?? null);
+        $stormCol = $mapping['storm_phone'] ?? null;
+        $rcCol = $mapping['rc_number'] ?? null;
         $codeCol = $mapping['client_code'] ?? null;
         $wilayaCol = $mapping['wilaya'] ?? null;
         $regionCol = $mapping['region'] ?? null;
@@ -249,9 +378,11 @@ class ClientImportService
         }
 
         // Cache existing clients for fast matching
-        $clients = Client::all(['id', 'name', 'phone', 'client_code', 'wilaya', 'region', 'outstanding_balance']);
+        $clients = Client::all(['id', 'name', 'phone', 'personal_phone', 'storm_phone', 'rc_number', 'client_code', 'wilaya', 'region', 'outstanding_balance']);
         $clientsByCode = [];
         $clientsByPhone = [];
+        $clientsByStorm = [];
+        $clientsByRc = [];
         $clientsByName = [];
 
         foreach ($clients as $c) {
@@ -262,6 +393,24 @@ class ClientImportService
                 $cleanPhone = preg_replace('/[^0-9]/', '', $c->phone);
                 if (!empty($cleanPhone)) {
                     $clientsByPhone[$cleanPhone] = $c;
+                }
+            }
+            if (!empty($c->personal_phone)) {
+                $cleanPerso = preg_replace('/[^0-9]/', '', $c->personal_phone);
+                if (!empty($cleanPerso)) {
+                    $clientsByPhone[$cleanPerso] = $c;
+                }
+            }
+            if (!empty($c->storm_phone)) {
+                $cleanStorm = preg_replace('/[^0-9]/', '', $c->storm_phone);
+                if (!empty($cleanStorm)) {
+                    $clientsByStorm[$cleanStorm] = $c;
+                }
+            }
+            if (!empty($c->rc_number)) {
+                $cleanRc = mb_strtolower(preg_replace('/[^a-z0-9]/i', '', $c->rc_number));
+                if (!empty($cleanRc)) {
+                    $clientsByRc[$cleanRc] = $c;
                 }
             }
             if (!empty($c->name)) {
@@ -297,6 +446,8 @@ class ClientImportService
             $name = trim($row[$nameCol] ?? '');
             $phone = trim($row[$phoneCol] ?? '');
             $rawCode = $codeCol ? trim($row[$codeCol] ?? '') : '';
+            $stormPhone = $stormCol ? trim((string)($row[$stormCol] ?? '')) : '';
+            $rcNumber = $rcCol ? trim((string)($row[$rcCol] ?? '')) : '';
             $rawWilaya = $wilayaCol ? trim($row[$wilayaCol] ?? '') : '';
             $wilaya = $rawWilaya;
             if (!empty($wilayaMapping) && isset($wilayaMapping[$rawWilaya])) {
@@ -305,6 +456,9 @@ class ClientImportService
             $derivedWilaya = $this->cleanWilayaName($wilaya);
             $region = $regionCol ? trim($row[$regionCol] ?? '') : '';
             $derivedRegion = $region;
+            if (!empty($regionMapping) && isset($regionMapping[$region])) {
+                $derivedRegion = $regionMapping[$region];
+            }
             if (empty($derivedRegion) && !empty($derivedWilaya)) {
                 $derivedRegion = $this->resolveRegionFromWilaya($derivedWilaya, $wilayasMap);
             }
@@ -335,6 +489,8 @@ class ClientImportService
                         'line' => $lineNum,
                         'name' => $name ?: '—',
                         'phone' => $phone ?: '—',
+                        'storm_phone' => $stormPhone ?: null,
+                        'rc_number' => $rcNumber ?: null,
                         'code' => $rawCode ?: '—',
                         'wilaya' => $derivedWilaya ?: '—',
                         'region' => $derivedRegion ?: '—',
@@ -349,6 +505,8 @@ class ClientImportService
 
             $validRows++;
             $cleanPhone = preg_replace('/[^0-9]/', '', $phone);
+            $cleanStorm = preg_replace('/[^0-9]/', '', $stormPhone);
+            $cleanRc = !empty($rcNumber) ? mb_strtolower(preg_replace('/[^a-z0-9]/i', '', $rcNumber)) : '';
             $normCode = strtoupper($rawCode);
             $normName = mb_strtolower(trim(preg_replace('/\s+/', ' ', $name)));
 
@@ -362,6 +520,12 @@ class ClientImportService
             } elseif (!empty($cleanPhone) && isset($clientsByPhone[$cleanPhone])) {
                 $existing = $clientsByPhone[$cleanPhone];
                 $matchReason = "Numéro de téléphone existant ({$phone})";
+            } elseif (!empty($cleanStorm) && isset($clientsByStorm[$cleanStorm])) {
+                $existing = $clientsByStorm[$cleanStorm];
+                $matchReason = "Numéro STORM existant ({$stormPhone})";
+            } elseif (!empty($cleanRc) && isset($clientsByRc[$cleanRc])) {
+                $existing = $clientsByRc[$cleanRc];
+                $matchReason = "N° Registre de Commerce existant ({$rcNumber})";
             } elseif (isset($clientsByName[$normName])) {
                 $existing = $clientsByName[$normName];
                 $matchReason = "Raison sociale existante ({$name})";
@@ -379,6 +543,8 @@ class ClientImportService
                         'line' => $lineNum,
                         'name' => $name,
                         'phone' => $phone,
+                        'storm_phone' => $stormPhone ?: null,
+                        'rc_number' => $rcNumber ?: ($existing->rc_number ?? null),
                         'code' => $rawCode ?: ($existing->client_code ?? '—'),
                         'wilaya' => $derivedWilaya ?: ($existing->wilaya ?? '—'),
                         'region' => $derivedRegion ?: ($existing->region ?? '—'),
@@ -389,7 +555,9 @@ class ClientImportService
                             'id' => $existing->id,
                             'name' => $existing->name,
                             'client_code' => $existing->client_code,
-                            'phone' => $existing->phone,
+                            'phone' => $existing->personal_phone ?? $existing->phone,
+                            'storm_phone' => $existing->storm_phone,
+                            'rc_number' => $existing->rc_number,
                             'wilaya' => $existing->wilaya,
                         ],
                     ];
@@ -405,6 +573,8 @@ class ClientImportService
                         'line' => $lineNum,
                         'name' => $name,
                         'phone' => $phone,
+                        'storm_phone' => $stormPhone ?: null,
+                        'rc_number' => $rcNumber ?: null,
                         'code' => $rawCode ?: 'CLI-2026-AUTO',
                         'wilaya' => $derivedWilaya ?: '—',
                         'region' => $derivedRegion ?: '—',
@@ -439,7 +609,7 @@ class ClientImportService
     /**
      * Execute the import using the saved file and client field mapping.
      */
-    public function execute(string $fileToken, array $mapping, string $duplicateAction = 'update', ?int $userId = null, array $wilayaMapping = []): array
+    public function execute(string $fileToken, array $mapping, string $duplicateAction = 'update', ?int $userId = null, array $wilayaMapping = [], array $regionMapping = []): array
     {
         ini_set('memory_limit', '512M');
         set_time_limit(300);
@@ -458,7 +628,10 @@ class ClientImportService
         $allRows = $this->readAllDataRows($filePath, $ext);
 
         $nameCol = $mapping['name'] ?? null;
-        $phoneCol = $mapping['phone'] ?? null;
+        $phoneCol = $mapping['phone'] ?? ($mapping['personal_phone'] ?? null);
+        $stormCol = $mapping['storm_phone'] ?? null;
+        $rcCol = $mapping['rc_number'] ?? null;
+        $persoCol = $mapping['personal_phone'] ?? null;
         $codeCol = $mapping['client_code'] ?? null;
         $wilayaCol = $mapping['wilaya'] ?? null;
         $regionCol = $mapping['region'] ?? null;
@@ -475,6 +648,8 @@ class ClientImportService
         $clients = Client::all();
         $clientsByCode = [];
         $clientsByPhone = [];
+        $clientsByStorm = [];
+        $clientsByRc = [];
         $clientsByName = [];
 
         foreach ($clients as $c) {
@@ -485,6 +660,24 @@ class ClientImportService
                 $cleanPhone = preg_replace('/[^0-9]/', '', $c->phone);
                 if (!empty($cleanPhone)) {
                     $clientsByPhone[$cleanPhone] = $c;
+                }
+            }
+            if (!empty($c->personal_phone)) {
+                $cleanPerso = preg_replace('/[^0-9]/', '', $c->personal_phone);
+                if (!empty($cleanPerso)) {
+                    $clientsByPhone[$cleanPerso] = $c;
+                }
+            }
+            if (!empty($c->storm_phone)) {
+                $cleanStorm = preg_replace('/[^0-9]/', '', $c->storm_phone);
+                if (!empty($cleanStorm)) {
+                    $clientsByStorm[$cleanStorm] = $c;
+                }
+            }
+            if (!empty($c->rc_number)) {
+                $cleanRc = mb_strtolower(preg_replace('/[^a-z0-9]/i', '', $c->rc_number));
+                if (!empty($cleanRc)) {
+                    $clientsByRc[$cleanRc] = $c;
                 }
             }
             if (!empty($c->name)) {
@@ -534,6 +727,9 @@ class ClientImportService
                 $derivedWilaya = $this->cleanWilayaName($wilaya);
                 $region = $regionCol ? trim($row[$regionCol] ?? '') : '';
                 $derivedRegion = $region;
+                if (!empty($regionMapping) && isset($regionMapping[$region])) {
+                    $derivedRegion = $regionMapping[$region];
+                }
                 if (empty($derivedRegion) && !empty($derivedWilaya)) {
                     $derivedRegion = $this->resolveRegionFromWilaya($derivedWilaya, $wilayasMap);
                 }
@@ -544,6 +740,10 @@ class ClientImportService
                 $clientType = $typeCol ? trim($row[$typeCol] ?? '') : '';
                 $creditLimit = $creditCol ? (float) str_replace([' ', ','], ['', '.'], $row[$creditCol] ?? '0') : 0.0;
                 $solde = $soldeCol ? (float) str_replace([' ', ','], ['', '.'], $row[$soldeCol] ?? '0') : 0.0;
+
+                $stormPhone = $stormCol ? trim((string) ($row[$stormCol] ?? '')) : null;
+                $rcNumber = $rcCol ? trim((string) ($row[$rcCol] ?? '')) : null;
+                $persoPhone = $persoCol ? trim((string) ($row[$persoCol] ?? '')) : null;
 
                 // Skip completely blank rows
                 if (empty($name) && empty($phone) && empty($rawCode)) {
@@ -560,6 +760,8 @@ class ClientImportService
                 }
 
                 $cleanPhone = preg_replace('/[^0-9]/', '', $phone);
+                $cleanStorm = !empty($stormPhone) ? preg_replace('/[^0-9]/', '', $stormPhone) : '';
+                $cleanRc = !empty($rcNumber) ? mb_strtolower(preg_replace('/[^a-z0-9]/i', '', $rcNumber)) : '';
                 $normCode = strtoupper($rawCode);
                 $normName = mb_strtolower(trim(preg_replace('/\s+/', ' ', $name)));
 
@@ -569,6 +771,10 @@ class ClientImportService
                     $existing = $clientsByCode[$normCode];
                 } elseif (!empty($cleanPhone) && isset($clientsByPhone[$cleanPhone])) {
                     $existing = $clientsByPhone[$cleanPhone];
+                } elseif (!empty($cleanStorm) && isset($clientsByStorm[$cleanStorm])) {
+                    $existing = $clientsByStorm[$cleanStorm];
+                } elseif (!empty($cleanRc) && isset($clientsByRc[$cleanRc])) {
+                    $existing = $clientsByRc[$cleanRc];
                 } elseif (isset($clientsByName[$normName])) {
                     $existing = $clientsByName[$normName];
                 }
@@ -582,6 +788,13 @@ class ClientImportService
                     // Update existing
                     $existing->name = $name;
                     $existing->phone = $phone;
+                    $existing->personal_phone = $persoPhone ?: ($existing->personal_phone ?: $phone);
+                    if (!empty($stormPhone)) {
+                        $existing->storm_phone = $stormPhone;
+                    }
+                    if (!empty($rcNumber)) {
+                        $existing->rc_number = $rcNumber;
+                    }
                     if (!empty($derivedWilaya)) {
                         $existing->wilaya = $derivedWilaya;
                     }
@@ -614,6 +827,9 @@ class ClientImportService
                     $newClient = new Client();
                     $newClient->name = $name;
                     $newClient->phone = $phone;
+                    $newClient->personal_phone = $persoPhone ?: $phone;
+                    $newClient->storm_phone = $stormPhone ?: null;
+                    $newClient->rc_number = !empty($rcNumber) ? $rcNumber : null;
                     $newClient->client_code = !empty($rawCode) ? $rawCode : $this->generateNextClientCode();
                     $newClient->wilaya = $derivedWilaya ?: 'Alger';
                     $newClient->region = $derivedRegion;
@@ -637,6 +853,12 @@ class ClientImportService
                     }
                     if (!empty($cleanPhone)) {
                         $clientsByPhone[$cleanPhone] = $newClient;
+                    }
+                    if (!empty($newClient->rc_number)) {
+                        $cRc = mb_strtolower(preg_replace('/[^a-z0-9]/i', '', $newClient->rc_number));
+                        if (!empty($cRc)) {
+                            $clientsByRc[$cRc] = $newClient;
+                        }
                     }
                     $clientsByName[$normName] = $newClient;
 
@@ -1016,6 +1238,9 @@ class ClientImportService
         $patterns = [
             'name' => '/\b(nom|name|client|raison|societe|customer|tiers|denomination)\b/i',
             'phone' => '/\b(tel|phone|telephone|mobile|gsm|contact|portable)\b/i',
+            'storm_phone' => '/\b(storm|flexy|puce|sim|ooredoo|num_storm|numero_storm)\b/i',
+            'rc_number' => '/\b(rc|registre|num_rc|n_rc|numero_rc|rc_num|com_reg|reg_com)\b/i',
+            'personal_phone' => '/\b(perso|personnel|contact_perso|tel_perso)\b/i',
             'client_code' => '/\b(code|ref|matricule|id_client|client_id)\b/i',
             'wilaya' => '/\b(wilaya|province|city|ville)\b/i',
             'region' => '/\b(region|zone|secteur)\b/i',

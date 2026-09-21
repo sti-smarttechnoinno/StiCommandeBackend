@@ -38,6 +38,7 @@ Route::post('/clients/{client}/objectives', [ClientObjectiveController::class, '
 Route::get('/reports/kpis', [ReportController::class, 'kpis']);
 Route::get('/reports/revenue-overview', [ReportController::class, 'revenueOverview']);
 Route::get('/reports/by-region', [ReportController::class, 'revenueByRegion']);
+Route::get('/reports/clients-by-region', [ReportController::class, 'clientsByRegionReport']);
 Route::get('/reports/sales-trends', [ReportController::class, 'salesTrends']);
 Route::get('/reports/order-status', [ReportController::class, 'orderStatusDistribution']);
 Route::get('/reports/top-delegates', [ReportController::class, 'topDelegates']);
@@ -84,10 +85,14 @@ Route::post('/clients/import-encaissements', [ClientController::class, 'importEn
 Route::post('/clients/import-recouvrement', [ClientController::class, 'importRecouvrement']);
 Route::post('/clients/import-preview', [ClientController::class, 'importPreview']);
 Route::post('/clients/import-extract-wilayas', [ClientController::class, 'extractWilayas']);
+Route::post('/clients/import-extract-regions', [ClientController::class, 'extractRegions']);
 Route::post('/clients/import-verify', [ClientController::class, 'importVerify']);
 Route::post('/clients/import-execute', [ClientController::class, 'importExecute']);
 Route::get('/encaissements/filter-options', [EncaissementController::class, 'filterOptions']);
 Route::get('/encaissements', [EncaissementController::class, 'index']);
+Route::post('/encaissements/import-preview', [EncaissementController::class, 'importPreview']);
+Route::post('/encaissements/import-verify', [EncaissementController::class, 'importVerify']);
+Route::post('/encaissements/import-execute', [EncaissementController::class, 'importExecute']);
 Route::get('/orders/kpis', [OrderController::class, 'kpis']);
 Route::get('/profile/kpis', [OrderController::class, 'profileKpis']);
 Route::get('/orders/stream', [OrderController::class, 'stream']);
