@@ -4,7 +4,7 @@ ARG PHP_VERSION=8.5
 # =========================================================
 # Stage 1: Install PHP Composer Dependencies
 # =========================================================
-FROM docker.io/library/composer:2 AS composer_builder
+FROM --platform=linux/amd64 docker.io/library/composer:2 AS composer_builder
 
 WORKDIR /app
 
@@ -27,7 +27,7 @@ RUN composer dump-autoload --optimize --no-scripts
 # =========================================================
 # Stage 2: Production Runtime (PHP FPM + Nginx + WebSockets)
 # =========================================================
-FROM docker.io/library/php:${PHP_VERSION}-fpm-alpine
+FROM --platform=linux/amd64 docker.io/library/php:${PHP_VERSION}-fpm-alpine
 
 LABEL maintainer="StiCommande DevOps Team"
 LABEL description="Production Docker image for StiCommande Backend (PHP 8.5 + Laravel + Nginx + WebSockets)"
@@ -91,7 +91,7 @@ COPY docker/nginx.conf /etc/nginx/nginx.conf
 COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 
-RUN chmod +x /usr/local/bin/entrypoint.sh
+RUN sed -i 's/\r$//' /usr/local/bin/entrypoint.sh && chmod +x /usr/local/bin/entrypoint.sh
 
 # Copy application source code
 COPY . /var/www/commande/backend

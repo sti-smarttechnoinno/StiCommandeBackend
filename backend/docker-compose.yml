@@ -3,6 +3,7 @@ services:
   # 1. Backend (Laravel API + Nginx + WebSocket Hub + Queue Worker)
   # =========================================================
   backend:
+    platform: linux/amd64
     build:
       context: .
       dockerfile: Dockerfile
@@ -60,6 +61,7 @@ services:
   # 2. Database (PostgreSQL 16)
   # =========================================================
   postgres:
+    platform: linux/amd64
     image: docker.io/library/postgres:16-alpine
     container_name: sticommande-postgres
     restart: unless-stopped
@@ -91,6 +93,7 @@ services:
   # 3. Cache & Message Broker (Redis 7)
   # =========================================================
   redis:
+    platform: linux/amd64
     image: docker.io/library/redis:7-alpine
     container_name: sticommande-redis
     restart: unless-stopped
