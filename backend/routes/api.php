@@ -19,6 +19,8 @@ use App\Http\Controllers\Api\StockController;
 use App\Http\Controllers\Api\WarehouseController;
 use App\Http\Controllers\Api\DeliveryNoteController;
 use App\Http\Controllers\Api\EncaissementController;
+use App\Http\Controllers\Api\SalesJournalController;
+use App\Http\Controllers\Api\ChatController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/auth/login', [AuthController::class, 'login']);
@@ -93,6 +95,14 @@ Route::get('/encaissements', [EncaissementController::class, 'index']);
 Route::post('/encaissements/import-preview', [EncaissementController::class, 'importPreview']);
 Route::post('/encaissements/import-verify', [EncaissementController::class, 'importVerify']);
 Route::post('/encaissements/import-execute', [EncaissementController::class, 'importExecute']);
+
+// Sales Journal routes (Public & Auth)
+Route::get('/sales-journal/filter-options', [SalesJournalController::class, 'filterOptions']);
+Route::get('/sales-journal/export', [SalesJournalController::class, 'export']);
+Route::get('/sales-journal', [SalesJournalController::class, 'index']);
+Route::post('/sales-journal/import-preview', [SalesJournalController::class, 'importPreview']);
+Route::post('/sales-journal/import-verify', [SalesJournalController::class, 'importVerify']);
+Route::post('/sales-journal/import-execute', [SalesJournalController::class, 'importExecute']);
 Route::get('/orders/kpis', [OrderController::class, 'kpis']);
 Route::get('/profile/kpis', [OrderController::class, 'profileKpis']);
 Route::get('/orders/stream', [OrderController::class, 'stream']);
@@ -151,6 +161,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/encaissements/filter-options', [EncaissementController::class, 'filterOptions']);
     Route::get('/encaissements', [EncaissementController::class, 'index']);
 
+    Route::get('/sales-journal/filter-options', [SalesJournalController::class, 'filterOptions']);
+    Route::get('/sales-journal/export', [SalesJournalController::class, 'export']);
+    Route::get('/sales-journal', [SalesJournalController::class, 'index']);
+
     Route::get('/delegates/filter-options', [DelegateController::class, 'filterOptions']);
     Route::get('/delegates/kpis', [DelegateController::class, 'kpis']);
     Route::get('/delegates/analytics', [DelegateController::class, 'analytics']);
@@ -194,4 +208,15 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/wilayas', [WilayaController::class, 'store']);
     Route::put('/wilayas/{wilaya}', [WilayaController::class, 'update']);
     Route::delete('/wilayas/{wilaya}', [WilayaController::class, 'destroy']);
+
+    // Chat communication routes
+    Route::prefix('chat')->group(function () {
+        Route::get('/contacts', [ChatController::class, 'contacts']);
+        Route::get('/conversations', [ChatController::class, 'conversations']);
+        Route::post('/conversations/direct/{userId}', [ChatController::class, 'directConversation']);
+        Route::get('/conversations/{id}/messages', [ChatController::class, 'messages']);
+        Route::post('/conversations/{id}/messages', [ChatController::class, 'sendMessage']);
+        Route::put('/conversations/{id}/read', [ChatController::class, 'markAsRead']);
+        Route::post('/presence/ping', [ChatController::class, 'pingPresence']);
+    });
 });

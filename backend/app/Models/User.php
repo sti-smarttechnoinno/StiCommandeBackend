@@ -70,6 +70,32 @@ class User extends Authenticatable
         return $this->belongsTo(Role::class, 'role', 'slug');
     }
 
+    public function conversationsAsStaff()
+    {
+        return $this->hasMany(Conversation::class, 'staff_id');
+    }
+
+    public function conversationsAsDelegate()
+    {
+        return $this->hasMany(Conversation::class, 'delegate_id');
+    }
+
+    public function sentMessages()
+    {
+        return $this->hasMany(ChatMessage::class, 'sender_id');
+    }
+
+    public function unreadChatMessagesCount(): int
+    {
+        return ChatMessage::where('sender_id', '!=', $this->id)
+            ->where('is_read', false)
+            ->whereHas('conversation', function ($query) {
+                $query->where('staff_id', $this->id)
+                    ->orWhere('delegate_id', $this->id);
+            })
+            ->count();
+    }
+
     public function getEffectivePermissions(): array
     {
         if ($this->isAdmin()) {

@@ -46,7 +46,8 @@ const server = http.createServer((req, res) => {
     req.on('end', () => {
       try {
         const payload = JSON.parse(body);
-        console.log('[WebSocket Hub] Broadcast Event:', payload.type, payload.order?.order_code || '');
+        const extraInfo = payload.order?.order_code || (payload.message ? `msg_id: ${payload.message.id}` : '') || (payload.user ? `user: ${payload.user.name}` : '');
+        console.log('[WebSocket Hub] Broadcast Event:', payload.type, extraInfo);
 
         const frame = createFrame(JSON.stringify(payload));
         let count = 0;
