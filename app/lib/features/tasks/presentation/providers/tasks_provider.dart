@@ -7,6 +7,7 @@ final tasksRepositoryProvider = Provider<TasksRepository>((ref) {
 });
 
 class TasksState {
+  final List<UserTaskModel> allTasks;
   final List<UserTaskModel> tasks;
   final TaskStatsModel stats;
   final List<TaskHistoryModel> history;
@@ -20,6 +21,7 @@ class TasksState {
   final String? error;
 
   const TasksState({
+    this.allTasks = const [],
     this.tasks = const [],
     this.stats = const TaskStatsModel(),
     this.history = const [],
@@ -34,6 +36,7 @@ class TasksState {
   });
 
   TasksState copyWith({
+    List<UserTaskModel>? allTasks,
     List<UserTaskModel>? tasks,
     TaskStatsModel? stats,
     List<TaskHistoryModel>? history,
@@ -47,6 +50,7 @@ class TasksState {
     String? error,
   }) {
     return TasksState(
+      allTasks: allTasks ?? this.allTasks,
       tasks: tasks ?? this.tasks,
       stats: stats ?? this.stats,
       history: history ?? this.history,
@@ -69,18 +73,58 @@ class TasksNotifier extends StateNotifier<TasksState> {
     loadData();
   }
 
+  static TaskStatsModel computeStats(List<UserTaskModel> allList) {
+    return TaskStatsModel(
+      total: allList.length,
+      pending: allList.where((t) => t.isPending).length,
+      inProgress: allList.where((t) => t.isInProgress).length,
+      completed: allList.where((t) => t.isCompleted).length,
+      validated: allList.where((t) => t.isValidated).length,
+      problem: allList.where((t) => t.isProblem).length,
+      cancelled: allList.where((t) => t.isCancelled).length,
+      privateCount: allList.where((t) => t.isPrivate).length,
+    );
+  }
+
+  static List<UserTaskModel> filterTasks(
+    List<UserTaskModel> allList, {
+    required String statusFilter,
+    String? categoryFilter,
+    String? priorityFilter,
+    String searchQuery = '',
+  }) {
+    return allList.where((task) {
+      if (statusFilter != 'all') {
+        if (task.status != statusFilter) return false;
+      }
+      if (categoryFilter != null && categoryFilter != 'all') {
+        if (task.category != categoryFilter) return false;
+      }
+      if (priorityFilter != null && priorityFilter != 'all') {
+        if (task.priority != priorityFilter) return false;
+      }
+      if (searchQuery.trim().isNotEmpty) {
+        final query = searchQuery.trim().toLowerCase();
+        final matchTitle = task.title.toLowerCase().contains(query);
+        final matchDesc = task.description?.toLowerCase().contains(query) ?? false;
+        final matchAssignee = task.assignedToName?.toLowerCase().contains(query) ?? false;
+        final matchAssigner = task.assignedByName.toLowerCase().contains(query);
+        if (!matchTitle && !matchDesc && !matchAssignee && !matchAssigner) {
+          return false;
+        }
+      }
+      return true;
+    }).toList();
+  }
+
   Future<void> loadData({bool silent = false}) async {
     if (!silent) {
       state = state.copyWith(isLoading: true, error: null);
     }
 
     try {
-      final tasksFuture = _repository.getTasks(
-        status: state.statusFilter,
-        priority: state.priorityFilter,
-        category: state.categoryFilter,
-        search: state.searchQuery,
-      );
+      // Fetch all tasks for this user so local provider holds complete list
+      final tasksFuture = _repository.getTasks();
       final historyFuture = _repository.getTaskHistory();
 
       final results = await Future.wait([tasksFuture, historyFuture]);
@@ -88,9 +132,22 @@ class TasksNotifier extends StateNotifier<TasksState> {
       final taskResult = results[0] as ({List<UserTaskModel> tasks, TaskStatsModel stats});
       final historyResult = results[1] as List<TaskHistoryModel>;
 
+      final allTasks = taskResult.tasks;
+      final computed = computeStats(allTasks);
+      final stats = taskResult.stats.total > 0 ? taskResult.stats : computed;
+
+      final filteredTasks = filterTasks(
+        allTasks,
+        statusFilter: state.statusFilter,
+        categoryFilter: state.categoryFilter,
+        priorityFilter: state.priorityFilter,
+        searchQuery: state.searchQuery,
+      );
+
       state = state.copyWith(
-        tasks: taskResult.tasks,
-        stats: taskResult.stats,
+        allTasks: allTasks,
+        tasks: filteredTasks,
+        stats: stats,
         history: historyResult,
         isLoading: false,
         error: null,
@@ -105,25 +162,61 @@ class TasksNotifier extends StateNotifier<TasksState> {
 
   void setStatusFilter(String status) {
     if (state.statusFilter == status) return;
-    state = state.copyWith(statusFilter: status);
-    loadData();
+    final filtered = filterTasks(
+      state.allTasks,
+      statusFilter: status,
+      categoryFilter: state.categoryFilter,
+      priorityFilter: state.priorityFilter,
+      searchQuery: state.searchQuery,
+    );
+    state = state.copyWith(
+      statusFilter: status,
+      tasks: filtered,
+    );
   }
 
   void setCategoryFilter(String? category) {
     if (state.categoryFilter == category) return;
-    state = state.copyWith(categoryFilter: category);
-    loadData();
+    final filtered = filterTasks(
+      state.allTasks,
+      statusFilter: state.statusFilter,
+      categoryFilter: category,
+      priorityFilter: state.priorityFilter,
+      searchQuery: state.searchQuery,
+    );
+    state = state.copyWith(
+      categoryFilter: category,
+      tasks: filtered,
+    );
   }
 
   void setPriorityFilter(String? priority) {
     if (state.priorityFilter == priority) return;
-    state = state.copyWith(priorityFilter: priority);
-    loadData();
+    final filtered = filterTasks(
+      state.allTasks,
+      statusFilter: state.statusFilter,
+      categoryFilter: state.categoryFilter,
+      priorityFilter: priority,
+      searchQuery: state.searchQuery,
+    );
+    state = state.copyWith(
+      priorityFilter: priority,
+      tasks: filtered,
+    );
   }
 
   void setSearchQuery(String query) {
-    state = state.copyWith(searchQuery: query);
-    loadData();
+    final filtered = filterTasks(
+      state.allTasks,
+      statusFilter: state.statusFilter,
+      categoryFilter: state.categoryFilter,
+      priorityFilter: state.priorityFilter,
+      searchQuery: query,
+    );
+    state = state.copyWith(
+      searchQuery: query,
+      tasks: filtered,
+    );
   }
 
   void setActiveView(String view) {
@@ -144,9 +237,12 @@ class TasksNotifier extends StateNotifier<TasksState> {
   Future<bool> updateTaskStatus(int taskId, String newStatus, {String? notes}) async {
     state = state.copyWith(isMutating: true);
 
-    // Optimistic UI update
+    // Optimistic UI update across all tasks
+    final previousAllTasks = state.allTasks;
     final previousTasks = state.tasks;
-    final updatedList = state.tasks.map((task) {
+    final previousStats = state.stats;
+
+    final updatedAll = state.allTasks.map((task) {
       if (task.id == taskId) {
         return task.copyWith(
           status: newStatus,
@@ -157,21 +253,43 @@ class TasksNotifier extends StateNotifier<TasksState> {
       return task;
     }).toList();
 
-    state = state.copyWith(tasks: updatedList);
+    final newStats = computeStats(updatedAll);
+    final updatedFiltered = filterTasks(
+      updatedAll,
+      statusFilter: state.statusFilter,
+      categoryFilter: state.categoryFilter,
+      priorityFilter: state.priorityFilter,
+      searchQuery: state.searchQuery,
+    );
+
+    state = state.copyWith(
+      allTasks: updatedAll,
+      tasks: updatedFiltered,
+      stats: newStats,
+    );
 
     try {
       final updated = await _repository.updateTaskStatus(taskId, newStatus, notes: notes);
       if (updated != null) {
-        // Refresh history & server stats
         loadData(silent: true);
         state = state.copyWith(isMutating: false);
         return true;
       }
-      // Rollback on failure
-      state = state.copyWith(tasks: previousTasks, isMutating: false);
+      state = state.copyWith(
+        allTasks: previousAllTasks,
+        tasks: previousTasks,
+        stats: previousStats,
+        isMutating: false,
+      );
       return false;
     } catch (e) {
-      state = state.copyWith(tasks: previousTasks, isMutating: false, error: e.toString());
+      state = state.copyWith(
+        allTasks: previousAllTasks,
+        tasks: previousTasks,
+        stats: previousStats,
+        isMutating: false,
+        error: e.toString(),
+      );
       return false;
     }
   }

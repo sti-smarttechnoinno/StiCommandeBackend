@@ -197,7 +197,7 @@ class _TasksPageState extends ConsumerState<TasksPage> {
                       ),
                       const SizedBox(width: 6),
                       Text(
-                        'Mes Missions (${state.tasks.length})',
+                        'Mes Missions (${state.stats.total})',
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: state.activeView == 'tasks' ? FontWeight.w800 : FontWeight.w600,
@@ -439,7 +439,7 @@ class _TasksPageState extends ConsumerState<TasksPage> {
               itemBuilder: (context, index) {
                 return TaskHistoryTile(
                   history: state.history[index],
-                  allTasks: state.tasks,
+                  allTasks: state.allTasks,
                 );
               },
             ),
