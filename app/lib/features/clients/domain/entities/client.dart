@@ -27,6 +27,8 @@ class Client {
   final String? lastPaymentStatus;
   final String? lastPaymentOrderNumber;
   final String? lastPaymentAccount;
+  final String? personalPhone;
+  final String? stormPhone;
   final DateTime? lastImportDate;
   final DateTime customerSince;
   final bool isFavorite;
@@ -42,6 +44,8 @@ class Client {
     required this.wilaya,
     required this.address,
     required this.phone,
+    this.personalPhone,
+    this.stormPhone,
     this.whatsapp,
     this.latitude = 0,
     this.longitude = 0,
@@ -66,6 +70,16 @@ class Client {
     this.delegateId,
     this.objective,
   });
+
+  String get displayPersonalPhone =>
+      (personalPhone != null && personalPhone!.trim().isNotEmpty)
+          ? personalPhone!.trim()
+          : (phone.trim().isNotEmpty ? phone.trim() : 'Non renseigné');
+
+  String get displayStormPhone =>
+      (stormPhone != null && stormPhone!.trim().isNotEmpty)
+          ? stormPhone!.trim()
+          : 'Non renseigné';
 
   double get availableCredit => creditLimit - outstandingBalance;
 
@@ -152,6 +166,8 @@ class Client {
       wilaya: json['wilaya']?.toString() ?? '',
       address: json['address']?.toString() ?? '',
       phone: json['phone']?.toString() ?? '',
+      personalPhone: json['personalPhone']?.toString() ?? json['personal_phone']?.toString(),
+      stormPhone: json['stormPhone']?.toString() ?? json['storm_phone']?.toString(),
       whatsapp: json['whatsapp']?.toString(),
       status: status,
       businessType: bType,

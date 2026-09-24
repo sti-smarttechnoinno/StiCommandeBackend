@@ -26,7 +26,7 @@ export interface Order {
   updatedAt: string;
 }
 
-export type OrderStatus = 'pending' | 'validated' | 'preparing' | 'delivered' | 'rejected' | 'cancelled';
+export type OrderStatus = 'pending' | 'validated' | 'partially_validated' | 'preparing' | 'delivered' | 'rejected' | 'cancelled';
 
 export interface OrderProduct {
   productId: string;

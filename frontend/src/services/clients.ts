@@ -6,6 +6,9 @@ export interface ClientData {
   name: string;
   email?: string;
   phone: string;
+  personalPhone?: string | null;
+  stormPhone?: string | null;
+  rcNumber?: string | null;
   address: string;
   region: string;
   wilaya: string;
@@ -43,6 +46,86 @@ export interface ClientImportPreviewResponse {
   columns: ClientImportColumn[];
   preview_rows: Record<string, any>[];
   suggested_mapping: Record<string, string>;
+}
+
+export interface ClientVerificationSample {
+  line: number;
+  name: string;
+  phone: string;
+  storm_phone?: string | null;
+  rc_number?: string | null;
+  code?: string;
+  wilaya?: string;
+  region?: string;
+  status: 'new' | 'existing' | 'invalid';
+  action: 'create' | 'update' | 'skip' | 'error';
+  match_reason?: string;
+  existing_client?: {
+    id: number;
+    name: string;
+    client_code?: string;
+    phone?: string;
+    storm_phone?: string | null;
+    rc_number?: string | null;
+    wilaya?: string;
+  } | null;
+}
+
+export interface WilayaFileItem {
+  file_value: string;
+  count: number;
+  matched_wilaya_id?: number | null;
+  matched_wilaya_name: string;
+  matched_wilaya_code: string;
+  matched_region: string;
+  confidence: 'exact' | 'auto' | 'none';
+}
+
+export interface DbWilayaItem {
+  id: number;
+  code: string;
+  name: string;
+  region_name: string;
+}
+
+export interface WilayaExtractResponse {
+  distinct_wilayas: WilayaFileItem[];
+  db_wilayas: DbWilayaItem[];
+}
+
+export interface RegionFileItem {
+  file_value: string;
+  count: number;
+  matched_region_id?: number | null;
+  matched_region_name: string;
+  confidence: 'exact' | 'auto' | 'none';
+}
+
+export interface DbRegionItem {
+  id: number;
+  code: string;
+  name: string;
+  color?: string;
+  icon?: string;
+}
+
+export interface RegionExtractResponse {
+  distinct_regions: RegionFileItem[];
+  db_regions: DbRegionItem[];
+}
+
+export interface ClientImportVerificationResult {
+  total_rows: number;
+  valid_rows: number;
+  invalid_rows: number;
+  new_clients_count: number;
+  existing_clients_count: number;
+  to_create_count: number;
+  to_update_count: number;
+  to_skip_count: number;
+  duplicate_action: 'update' | 'skip';
+  sample_verifications: ClientVerificationSample[];
+  errors: { line: number; error: string }[];
 }
 
 export interface ClientImportResult {
@@ -214,6 +297,8 @@ export const clientsService = {
       delegate_name: client.delegateName,
       delegateName: client.delegateName,
       client_code: client.clientCode,
+      rc_number: client.rcNumber || (client as any).rc_number || undefined,
+      rcNumber: client.rcNumber || (client as any).rc_number || undefined,
     };
     const { data } = await api.post<{ data: ClientData }>('/clients', payload);
     return data.data;
@@ -236,7 +321,40 @@ export const clientsService = {
     const formData = new FormData();
     formData.append('file', file);
     const { data } = await api.post<{ data: ClientImportPreviewResponse }>('/clients/import-preview', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
+    return data.data;
+  },
+
+  async extractWilayas(payload: {
+    file_token: string;
+    wilaya_column: string;
+  }): Promise<WilayaExtractResponse> {
+    const { data } = await api.post<{ data: WilayaExtractResponse }>('/clients/import-extract-wilayas', payload);
+    return data.data;
+  },
+
+  async extractRegions(payload: {
+    file_token: string;
+    region_column: string;
+  }): Promise<RegionExtractResponse> {
+    const { data } = await api.post<{ data: RegionExtractResponse }>('/clients/import-extract-regions', payload);
+    return data.data;
+  },
+
+  async importVerify(payload: {
+    file_token: string;
+    mapping: Record<string, string>;
+    duplicate_action: 'update' | 'skip';
+    wilaya_mapping?: Record<string, string>;
+    region_mapping?: Record<string, string>;
+  }): Promise<ClientImportVerificationResult> {
+    const { data } = await api.post<{ data: ClientImportVerificationResult }>('/clients/import-verify', payload, {
+      headers: {
+        'Accept': 'application/json',
+      },
     });
     return data.data;
   },
@@ -245,15 +363,22 @@ export const clientsService = {
     file_token: string;
     mapping: Record<string, string>;
     duplicate_action: 'update' | 'skip';
+    wilaya_mapping?: Record<string, string>;
+    region_mapping?: Record<string, string>;
   }): Promise<{ message: string; data: ClientImportResult }> {
-    const { data } = await api.post<{ message: string; data: ClientImportResult }>('/clients/import-execute', payload);
+    const { data } = await api.post<{ message: string; data: ClientImportResult }>('/clients/import-execute', payload, {
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
     return data;
   },
 
   async importEncaissements(payloadOrForm: FormData | { use_data_folder?: boolean }): Promise<any> {
-    const isFormData = typeof FormData !== 'undefined' && payloadOrForm instanceof FormData;
     const { data } = await api.post('/clients/import-encaissements', payloadOrForm, {
-      headers: isFormData ? { 'Content-Type': 'multipart/form-data' } : undefined,
+      headers: {
+        'Accept': 'application/json',
+      },
     });
     return data;
   },

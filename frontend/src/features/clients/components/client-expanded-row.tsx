@@ -17,6 +17,8 @@ import {
   Target,
   ExternalLink,
   Plus,
+  Zap,
+  FileText,
 } from 'lucide-react';
 
 interface ClientExpandedRowProps {
@@ -90,8 +92,24 @@ export function ClientExpandedRow({ client }: ClientExpandedRowProps) {
               <div className="space-y-1.5 text-xs">
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <Phone className="h-3 w-3 text-muted-foreground/70" />
-                  <span className="text-foreground font-medium">{client.phone || 'No phone'}</span>
+                  <span className="text-foreground font-medium font-mono">{client.personalPhone || client.phone || 'Aucun numéro'}</span>
                 </div>
+                {client.stormPhone && (
+                  <div className="flex items-center gap-1.5 text-muted-foreground">
+                    <Zap className="h-3 w-3 text-rose-500 fill-rose-500" />
+                    <span className="text-rose-600 dark:text-rose-400 font-bold font-mono text-[11px]">
+                      STORM : {client.stormPhone}
+                    </span>
+                  </div>
+                )}
+                {client.rcNumber && (
+                  <div className="flex items-center gap-1.5 text-muted-foreground">
+                    <FileText className="h-3 w-3 text-indigo-500" />
+                    <span className="text-foreground font-mono font-medium text-[11px]">
+                      RC : {client.rcNumber}
+                    </span>
+                  </div>
+                )}
                 {client.email && (
                   <div className="flex items-center gap-2 text-muted-foreground">
                     <Mail className="h-3 w-3 text-muted-foreground/70" />

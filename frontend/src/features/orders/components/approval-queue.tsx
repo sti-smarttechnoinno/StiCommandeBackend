@@ -46,6 +46,26 @@ export function ApprovalQueue() {
 
   useEffect(() => {
     fetchPendingOrders();
+
+    const handleUpdate = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.id && detail?.status && detail.status !== 'pending') {
+        setOrders((prev) => prev.filter((o) => o.id !== detail.id));
+      } else {
+        fetchPendingOrders();
+      }
+    };
+
+    window.addEventListener('sti-order-updated', handleUpdate);
+    window.addEventListener('sti-order-created', fetchPendingOrders);
+    window.addEventListener('sti-order-deleted', handleUpdate);
+    window.addEventListener('sti-websocket-event', fetchPendingOrders);
+    return () => {
+      window.removeEventListener('sti-order-updated', handleUpdate);
+      window.removeEventListener('sti-order-created', fetchPendingOrders);
+      window.removeEventListener('sti-order-deleted', handleUpdate);
+      window.removeEventListener('sti-websocket-event', fetchPendingOrders);
+    };
   }, []);
 
   const handleApprove = async (id: string, code: string) => {

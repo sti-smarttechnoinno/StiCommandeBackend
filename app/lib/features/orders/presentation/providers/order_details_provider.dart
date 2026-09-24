@@ -14,17 +14,19 @@ final orderDetailsProvider =
   final orders = ref.watch(ordersHistoryProvider);
   final lastCreated = ref.watch(lastCreatedOrderProvider);
 
-  Order? order;
-  if (lastCreated != null &&
-      (lastCreated.id == orderId || lastCreated.orderNumber == orderId)) {
-    order = lastCreated;
-  }
-
-  order ??= orders.where((o) =>
+  // 1. Look in fresh orders history first (so updates from API take precedence)
+  Order? order = orders.where((o) =>
       o.id == orderId ||
       o.orderNumber == orderId ||
       (orderId.isNotEmpty && o.id.toString() == orderId.toString()) ||
       o.orderNumber.replaceAll('-', '').contains(orderId.replaceAll('-', ''))).firstOrNull;
+
+  // 2. Fallback to lastCreated session cache if not yet loaded in history
+  if (order == null &&
+      lastCreated != null &&
+      (lastCreated.id == orderId || lastCreated.orderNumber == orderId)) {
+    order = lastCreated;
+  }
 
   order ??= lastCreated ?? (orders.isNotEmpty ? orders.first : mockOrders.first);
 
@@ -44,8 +46,9 @@ final orderDetailsProvider =
     delegateName: delegateName,
     delegateRegion: delegateRegion,
     delegateWilaya: delegateWilaya,
-    rejectionReason:
-        order.status == OrderStatus.rejected ? 'Informations de livraison incomplètes.' : null,
+    rejectionReason: (order.rejectionReason != null && order.rejectionReason!.trim().isNotEmpty)
+        ? order.rejectionReason
+        : (order.status == OrderStatus.rejected ? 'Aucun motif spécifié.' : null),
   );
 });
 
@@ -66,6 +69,22 @@ List<TimelineStep> _buildTimeline(Order order, DateTime base) {
         '${base.hour.toString().padLeft(2, '0')}:${base.minute.toString().padLeft(2, '0')}',
     status: TimelineStepStatus.completed,
   ));
+
+  // If order was rejected, show rejection directly in the timeline
+  if (order.status == OrderStatus.rejected) {
+    steps.add(TimelineStep(
+      title: 'Commande Rejetée',
+      description: (order.rejectionReason != null && order.rejectionReason!.isNotEmpty)
+          ? 'Motif : ${order.rejectionReason}'
+          : 'La commande a été rejetée par l\'administration.',
+      date:
+          '${order.updatedAt.day.toString().padLeft(2, '0')} ${_monthName(order.updatedAt.month)} ${order.updatedAt.year}',
+      time:
+          '${order.updatedAt.hour.toString().padLeft(2, '0')}:${order.updatedAt.minute.toString().padLeft(2, '0')}',
+      status: TimelineStepStatus.rejected,
+    ));
+    return steps;
+  }
 
   // Step 2: En attente
   steps.add(TimelineStep(

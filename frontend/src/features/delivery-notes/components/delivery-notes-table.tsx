@@ -50,9 +50,9 @@ export function DeliveryNotesTable({
   filtersElement,
 }: DeliveryNotesTableProps) {
   return (
-    <Card className="border border-border/40 shadow-xs rounded-2xl overflow-hidden bg-card flex flex-col justify-between w-full">
+    <Card className="border border-border/40 shadow-xs rounded-2xl overflow-hidden bg-card flex flex-col w-full py-0 gap-0">
       {/* Integrated Combined Header & Filters matching Orders */}
-      <CardHeader className="pb-3 border-b border-border/40 space-y-4">
+      <CardHeader className="pt-5 sm:pt-6 px-5 sm:px-6 pb-3 border-b border-border/40 space-y-4">
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center flex-shrink-0">

@@ -79,20 +79,34 @@ export function KPICards() {
 
   useEffect(() => {
     let active = true;
-    ordersService
-      .getKpis()
-      .then((data) => {
-        if (active) {
-          setLiveKpis(data);
-          setLoading(false);
-        }
-      })
-      .catch(() => {
-        if (active) setLoading(false);
-      });
+
+    const loadKpis = () => {
+      ordersService
+        .getKpis()
+        .then((data) => {
+          if (active) {
+            setLiveKpis(data);
+            setLoading(false);
+          }
+        })
+        .catch(() => {
+          if (active) setLoading(false);
+        });
+    };
+
+    loadKpis();
+
+    window.addEventListener('sti-order-updated', loadKpis);
+    window.addEventListener('sti-order-created', loadKpis);
+    window.addEventListener('sti-order-deleted', loadKpis);
+    window.addEventListener('sti-websocket-event', loadKpis);
 
     return () => {
       active = false;
+      window.removeEventListener('sti-order-updated', loadKpis);
+      window.removeEventListener('sti-order-created', loadKpis);
+      window.removeEventListener('sti-order-deleted', loadKpis);
+      window.removeEventListener('sti-websocket-event', loadKpis);
     };
   }, []);
 

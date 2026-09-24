@@ -15,6 +15,9 @@ import {
   Truck,
   ShoppingBag,
   Banknote,
+  FileSpreadsheet,
+  MessageSquare,
+  Target,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -46,17 +49,20 @@ export const NAV_ITEMS: NavItem[] = [
     children: [
       { label: 'Commandes', href: '/orders', icon: ShoppingCart, permission: 'orders.view' },
       { label: 'Bons de Livraison', href: '/delivery-notes', icon: Truck, permission: 'orders.view' },
+      { label: 'Journal de Vente', href: '/sales-journal', icon: FileSpreadsheet, permission: 'orders.view' },
     ],
   },
   { label: 'Clients', href: '/clients', icon: Users, permission: 'clients.view' },
   { label: 'Encaissements', href: '/encaissements', icon: Banknote, permission: 'clients.view' },
   { label: 'Délégués', href: '/delegates', icon: UserPlus, permission: 'users.manage' },
+  { label: 'Objectifs & Missions', href: '/objectives', icon: Target },
   { label: 'Produits', href: '/products', icon: Package, permission: 'products.view' },
   { label: 'Régions', href: '/regions', icon: Globe, permission: 'settings.manage' },
   { label: 'Wilayas', href: '/wilayas', icon: MapPin, permission: 'settings.manage' },
   { label: 'Stock', href: '/stock', icon: HardDrive, permission: 'products.manage' },
   { label: 'Rapports', href: '/reports', icon: BarChart3, permission: 'reports.view' },
   { label: 'Utilisateurs', href: '/users', icon: FileText, permission: 'users.manage' },
+  { label: 'Messagerie', href: '/chat', icon: MessageSquare },
   { label: 'Notifications', href: '/notifications', icon: Bell },
   { label: 'Diffusions Push', href: '/push-notifications', icon: Send, permission: 'settings.manage' },
   { label: 'Paramètres', href: '/settings', icon: Settings, permission: 'settings.manage' },

@@ -30,6 +30,7 @@ import { OrderPriorityBadge } from './order-priority-badge';
 import { OrderActions } from './order-actions';
 import { OrderExpandedRow } from './order-expanded-row';
 import { OrderFilters } from './order-filters';
+import { RejectOrderDialog } from './reject-order-dialog';
 import {
   ChevronLeft,
   ChevronRight,
@@ -53,6 +54,7 @@ export function OrdersTable() {
 
   const [dbOrders, setDbOrders] = useState<ExtendedOrder[]>([]);
   const [loading, setLoading] = useState(true);
+  const [rejectModalOrder, setRejectModalOrder] = useState<ExtendedOrder | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -84,6 +86,9 @@ export function OrdersTable() {
               priority: 'normal',
               products: (o.items || []).length,
               isVirtual: isVirt,
+              notes: o.notes || o.delegate_notes || o.delegateNotes || '',
+              rejectionReason: o.rejection_reason || o.rejectionReason || '',
+              deliveryAddress: o.delivery_address || o.deliveryAddress || '',
               createdAt: o.created_at || o.createdAt || new Date().toISOString(),
               updatedAt: o.updated_at || o.updatedAt || new Date().toISOString(),
               items: (o.items || []).map((item: any) => ({
@@ -137,6 +142,9 @@ export function OrdersTable() {
             const cat = `${it.category || ''} ${it.product_name || ''}`.toLowerCase();
             return cat.includes('credit') || cat.includes('recharge') || cat.includes('mobile_credit');
           })),
+        notes: o.notes || o.delegate_notes || o.delegateNotes || '',
+        rejectionReason: o.rejection_reason || o.rejectionReason || '',
+        deliveryAddress: o.delivery_address || o.deliveryAddress || '',
         createdAt: o.created_at || o.createdAt || new Date().toISOString(),
         updatedAt: o.updated_at || o.updatedAt || new Date().toISOString(),
         items: (o.items || []).map((item: any) => ({
@@ -157,8 +165,52 @@ export function OrdersTable() {
         }
         return [newOrder, ...prev];
       });
+    } else if ((lastEvent?.type === 'ORDER_UPDATED' || lastEvent?.type === 'ORDER_STATUS_CHANGED') && lastEvent.order) {
+      const o: any = lastEvent.order;
+      setDbOrders((prev) =>
+        prev.map((existing) => {
+          if (existing.id === o.id || (o.order_code && existing.orderNumber === o.order_code)) {
+            return {
+              ...existing,
+              status: (o.status as any) || existing.status,
+              totalAmount: Number(o.total_amount ?? existing.totalAmount),
+              notes: o.notes ?? existing.notes,
+              rejectionReason: o.rejection_reason ?? existing.rejectionReason,
+              updatedAt: o.updated_at || new Date().toISOString(),
+              ...(o.items ? {
+                items: o.items.map((item: any) => ({
+                  id: item.id || String(Math.random()),
+                  productId: item.product_id || item.productId || '',
+                  productName: item.product_name || item.productName || 'Produit',
+                  sku: item.reference || item.sku || 'SKU',
+                  quantity: item.quantity || 1,
+                  validatedQuantity: item.validated_quantity ?? item.quantity ?? 1,
+                  unitPrice: Number(item.unit_price) || 0,
+                  totalPrice: Number(item.subtotal) || 0,
+                })),
+                products: o.items.length,
+              } : {}),
+            };
+          }
+          return existing;
+        })
+      );
     }
   }, [lastEvent]);
+
+  useEffect(() => {
+    const handleLocalUpdate = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.id && detail?.status) {
+        setDbOrders((prev) =>
+          prev.map((order) => (order.id === detail.id ? { ...order, status: detail.status as any } : order))
+        );
+      }
+    };
+
+    window.addEventListener('sti-order-updated', handleLocalUpdate);
+    return () => window.removeEventListener('sti-order-updated', handleLocalUpdate);
+  }, []);
 
   const allOrdersList = useMemo(() => {
     return dbOrders;
@@ -208,6 +260,32 @@ export function OrdersTable() {
     toast.error(`${selectedIds.size} orders deleted`);
     clearSelection();
   };
+
+  const handleConfirmReject = useCallback(async (orderId: string, reason: string) => {
+    // Immediately update local state and expand row so user sees changes in Détail des Produits & Validation immediately
+    setDbOrders((prev) =>
+      prev.map((o) =>
+        o.id === orderId
+          ? {
+              ...o,
+              status: 'rejected',
+              rejectionReason: reason,
+            }
+          : o
+      )
+    );
+    if (!expandedIds.has(orderId)) {
+      toggleExpand(orderId);
+    }
+
+    try {
+      await ordersService.updateStatus(orderId, 'rejected', undefined, undefined, reason);
+      toast.success(`Commande rejetée avec succès.`);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'Erreur lors du rejet de la commande.');
+      throw err;
+    }
+  }, [expandedIds, toggleExpand]);
 
   const columns = useMemo<ColumnDef<ExtendedOrder>[]>(
     () => [
@@ -408,8 +486,13 @@ export function OrdersTable() {
             status={row.original.status}
             onView={(id) => router.push(`/orders/${id}`)}
             onEdit={(id) => router.push(`/orders/${id}/edit`)}
-            onApprove={(id) => toast.success(`Order ${id} approved`)}
-            onReject={(id) => toast.error(`Order ${id} rejected`)}
+            onApprove={(id) => {
+              if (!expandedIds.has(id)) {
+                toggleExpand(id);
+              }
+              toast.info(`Validation de la commande ${row.original.orderNumber} : vérifiez les quantités et validez ci-dessous.`);
+            }}
+            onReject={(id) => setRejectModalOrder(row.original)}
             onPrint={(id) => toast.info(`Printing order ${id}`)}
             onDelete={(id) => toast.success(`Order ${id} deleted`)}
             onDuplicate={(id) => toast.info(`Duplicating order ${id}`)}
@@ -441,9 +524,9 @@ export function OrdersTable() {
   });
 
   return (
-    <Card className="border border-border/40 shadow-xs rounded-2xl overflow-hidden w-full">
+    <Card className="border border-border/40 shadow-xs rounded-2xl overflow-hidden w-full py-0 gap-0">
       {/* Integrated Combined Header & Filters */}
-      <CardHeader className="pb-3 border-b border-border/40 space-y-4">
+      <CardHeader className="pt-5 sm:pt-6 px-5 sm:px-6 pb-3 border-b border-border/40 space-y-4">
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center flex-shrink-0">
@@ -567,6 +650,7 @@ export function OrdersTable() {
                           <TableCell colSpan={columns.length} className="p-0">
                             <OrderExpandedRow
                               order={row.original}
+                              onRejectOrder={handleConfirmReject}
                               onUpdateStatus={(orderId, newStatus, validatedItems) => {
                                 setDbOrders((prev) =>
                                   prev.map((o) =>
@@ -672,6 +756,14 @@ export function OrdersTable() {
           </div>
         </div>
       </CardContent>
+
+      {/* Reject Order Modal Dialog */}
+      <RejectOrderDialog
+        open={!!rejectModalOrder}
+        onOpenChange={(open) => !open && setRejectModalOrder(null)}
+        order={rejectModalOrder}
+        onConfirm={handleConfirmReject}
+      />
     </Card>
   );
 }

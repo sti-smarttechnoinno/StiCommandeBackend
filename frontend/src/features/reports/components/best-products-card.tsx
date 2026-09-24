@@ -59,13 +59,25 @@ export function BestProductsCard() {
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-semibold text-foreground truncate">{product.name}</span>
-                    <span className="text-[10px] font-bold text-foreground ml-2">{formatCurrency(product.sales)}</span>
+                    <div className="flex items-center gap-1.5 truncate">
+                      <span className="text-xs font-semibold text-foreground truncate">{product.name}</span>
+                      {product.reference && (
+                        <span className="font-mono text-[8px] font-medium text-muted-foreground bg-muted px-1 py-0.2 rounded border border-border/50">
+                          {product.reference}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[10px] font-bold text-foreground ml-2 shrink-0">{formatCurrency(product.sales)}</span>
                   </div>
                   <div className="flex items-center gap-2 mb-1.5">
                     <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">
                       {product.category}
                     </span>
+                    {product.operator && (
+                      <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
+                        {product.operator}
+                      </span>
+                    )}
                     <span className="text-[10px] text-muted-foreground">{product.units.toLocaleString()} units</span>
                     <span className="text-[10px] font-semibold text-emerald-600 ml-auto flex items-center gap-0.5">
                       <TrendingUp className="h-2.5 w-2.5" />

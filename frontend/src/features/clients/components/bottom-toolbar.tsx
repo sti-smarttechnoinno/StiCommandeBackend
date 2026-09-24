@@ -2,10 +2,16 @@
 
 import { Button } from '@/components/ui/button';
 import { useClientsStore } from '../store';
-import { Download, Printer, FileText, Settings } from 'lucide-react';
+import { Download, Printer, FileText, Settings, Coins, Receipt } from 'lucide-react';
 import { toast } from 'sonner';
+import { ImportRecouvrementDialog } from './import-recouvrement-dialog';
+import { ImportEncaissementsDialog } from './import-encaissements-dialog';
 
-export function BottomToolbar() {
+interface BottomToolbarProps {
+  onSuccess?: () => void;
+}
+
+export function BottomToolbar({ onSuccess }: BottomToolbarProps = {}) {
   const { selectedIds } = useClientsStore();
 
   return (
@@ -35,6 +41,38 @@ export function BottomToolbar() {
         >
           <Printer className="h-3.5 w-3.5 text-muted-foreground" /> Print Summary
         </Button>
+
+        {/* Update Solde Recouvrement Action */}
+        <ImportRecouvrementDialog
+          onSuccess={onSuccess}
+          trigger={
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 px-3 rounded-full text-xs font-semibold gap-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-500/30 transition-all shadow-2xs cursor-pointer"
+            >
+              <Coins className="h-3.5 w-3.5 text-amber-500" />
+              <span>Mettre à jour les soldes</span>
+            </Button>
+          }
+        />
+
+        {/* Update Encaissements Action */}
+        <ImportEncaissementsDialog
+          onSuccess={onSuccess}
+          trigger={
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 px-3 rounded-full text-xs font-semibold gap-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 transition-all shadow-2xs cursor-pointer"
+            >
+              <Receipt className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span>Mettre à jour les encaissements</span>
+            </Button>
+          }
+        />
       </div>
       <div className="flex items-center gap-1.5">
         {selectedIds.size > 0 && (

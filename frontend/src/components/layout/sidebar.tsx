@@ -9,6 +9,7 @@ import { useUIStore } from '@/store';
 import { useMediaQuery } from '@/hooks/use-media-query';
 import { useWebSocketOrders } from '@/hooks/use-websocket-orders';
 import { notificationsService } from '@/services/notifications';
+import { chatService } from '@/services/chat';
 import { useNotificationsStore } from '@/features/notifications/store';
 import { useState, useEffect } from 'react';
 import { usePermissions } from '@/hooks/use-permissions';
@@ -25,25 +26,53 @@ export function Sidebar() {
   const { sidebarCollapsed, sidebarMobileOpen, setSidebarMobileOpen } = useUIStore();
   const isMobile = useMediaQuery('(max-width: 1023px)');
   const collapsed = !isMobile && sidebarCollapsed;
-  const { unvalidatedCount } = useWebSocketOrders();
+  const { unvalidatedCount, refreshCount } = useWebSocketOrders();
   const refreshKey = useNotificationsStore((s) => s.refreshKey);
   const [unreadNotificationsCount, setUnreadNotificationsCount] = useState<number>(0);
+  const [unreadChatCount, setUnreadChatCount] = useState<number>(0);
   const { can, user } = usePermissions();
 
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({ Vente: true });
 
   useEffect(() => {
-    if (pathname.startsWith('/orders') || pathname.startsWith('/delivery-notes')) {
+    if (pathname.startsWith('/orders') || pathname.startsWith('/delivery-notes') || pathname.startsWith('/sales-journal')) {
       setOpenSections((prev) => ({ ...prev, Vente: true }));
     }
   }, [pathname]);
 
   useEffect(() => {
+    refreshCount();
+
     notificationsService
       .getKpis()
       .then((res) => setUnreadNotificationsCount(res.unreadCount))
       .catch(() => setUnreadNotificationsCount(0));
-  }, [refreshKey, pathname]);
+
+    chatService
+      .getContacts()
+      .then((res) => setUnreadChatCount(res.total_unread))
+      .catch(() => setUnreadChatCount(0));
+  }, [refreshKey, pathname, refreshCount]);
+
+  useEffect(() => {
+    const handleWs = (e: Event) => {
+      const data = (e as CustomEvent).detail;
+      if (data?.type === 'CHAT_MESSAGE_SENT') {
+        if (!pathname.startsWith('/chat')) {
+          setUnreadChatCount((prev) => prev + 1);
+        }
+      }
+      if (data?.type === 'CHAT_MESSAGES_VIEWED') {
+        chatService
+          .getContacts()
+          .then((res) => setUnreadChatCount(res.total_unread))
+          .catch(() => {});
+      }
+    };
+
+    window.addEventListener('sti-websocket-event', handleWs);
+    return () => window.removeEventListener('sti-websocket-event', handleWs);
+  }, [pathname]);
 
   const visibleNavItems = NAV_ITEMS.filter((item) => {
     if (item.permission && !can(item.permission)) {
@@ -306,6 +335,10 @@ export function Sidebar() {
             let badgeValue: number | undefined = undefined;
             if (itemHref === '/notifications' && unreadNotificationsCount > 0) {
               badgeValue = unreadNotificationsCount;
+            } else if (itemHref === '/chat' && unreadChatCount > 0) {
+              badgeValue = unreadChatCount;
+            } else if (itemHref === '/orders' && unvalidatedCount > 0) {
+              badgeValue = unvalidatedCount;
             } else if (item.badge) {
               badgeValue = item.badge;
             }

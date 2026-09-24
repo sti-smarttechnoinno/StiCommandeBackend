@@ -16,7 +16,7 @@ class TimelineStep {
   });
 }
 
-enum TimelineStepStatus { completed, current, upcoming }
+enum TimelineStepStatus { completed, current, upcoming, rejected }
 
 class OrderPaymentSummary {
   final double subtotal;

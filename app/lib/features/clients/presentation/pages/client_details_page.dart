@@ -8,6 +8,7 @@ import '../../../../core/constants/app_constants.dart';
 import '../providers/client_details_provider.dart';
 import '../widgets/client_profile_card.dart';
 import '../widgets/financial_summary_card.dart';
+import '../widgets/client_objective_card.dart';
 import '../widgets/quick_actions_grid.dart';
 import '../widgets/statistics_section.dart';
 import '../widgets/recent_orders_card.dart';
@@ -141,6 +142,16 @@ class ClientDetailsPage extends ConsumerWidget {
                         SliverToBoxAdapter(
                           child: FinancialSummaryCard(client: details.client),
                         ),
+
+                        if (details.client.objective != null &&
+                            details.client.objective!.isSet) ...[
+                          const SliverToBoxAdapter(
+                              child: SizedBox(height: AppConstants.xxl)),
+                          // Monthly Objective
+                          SliverToBoxAdapter(
+                            child: ClientObjectiveCard(client: details.client),
+                          ),
+                        ],
 
                         const SliverToBoxAdapter(
                             child: SizedBox(height: AppConstants.xxl)),

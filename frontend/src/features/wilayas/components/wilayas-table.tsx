@@ -187,20 +187,49 @@ export function WilayasTable({ onViewWilaya, refreshTrigger = 0 }: WilayasTableP
         accessorKey: 'delegate',
         header: 'Assigned Delegate',
         cell: ({ row }) => {
-          const d = row.original.delegate;
-          if (!d) return <span className="text-xs text-muted-foreground italic">Unassigned</span>;
+          const delegates = (row.original.delegates && row.original.delegates.length > 0)
+            ? row.original.delegates
+            : (row.original.delegate ? [row.original.delegate] : []);
+
+          if (delegates.length === 0) {
+            return <span className="text-xs text-muted-foreground italic">Unassigned</span>;
+          }
+
+          if (delegates.length === 1) {
+            const d = delegates[0];
+            return (
+              <div className="flex items-center gap-2 min-w-0" title={`${d.name} (${d.role}${d.region ? ` - ${d.region}` : ''})`}>
+                <Avatar className="h-6 w-6 flex-shrink-0">
+                  <AvatarFallback className="text-[10px] font-bold bg-primary/10 text-primary">
+                    {d.avatar}
+                  </AvatarFallback>
+                </Avatar>
+                <span className="text-xs font-semibold text-foreground truncate">{d.name}</span>
+              </div>
+            );
+          }
+
           return (
-            <div className="flex items-center gap-2 min-w-0">
-              <Avatar className="h-6 w-6 flex-shrink-0">
-                <AvatarFallback className="text-[10px] font-bold bg-primary/10 text-primary">
-                  {d.avatar}
-                </AvatarFallback>
-              </Avatar>
-              <span className="text-xs font-semibold text-foreground truncate">{d.name}</span>
+            <div className="flex flex-col gap-1 py-1 min-w-0">
+              {delegates.map((d, idx) => (
+                <div key={d.id || idx} className="flex items-center gap-1.5 min-w-0" title={`${d.name} (${d.role}${d.region ? ` - ${d.region}` : ''})`}>
+                  <Avatar className="h-5 w-5 flex-shrink-0">
+                    <AvatarFallback className="text-[9px] font-bold bg-primary/10 text-primary">
+                      {d.avatar}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="text-xs font-semibold text-foreground truncate">{d.name}</span>
+                  {d.region && (
+                    <span className="text-[9px] px-1 py-0.5 rounded bg-muted/80 text-muted-foreground font-medium border border-border/40 shrink-0">
+                      {d.region}
+                    </span>
+                  )}
+                </div>
+              ))}
             </div>
           );
         },
-        size: 150,
+        size: 190,
       },
       {
         accessorKey: 'clients',

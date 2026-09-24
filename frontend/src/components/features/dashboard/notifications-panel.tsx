@@ -51,22 +51,22 @@ export function NotificationsPanel() {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <CardTitle className="text-base font-bold tracking-tight">Recent Notifications</CardTitle>
+              <CardTitle className="text-base font-bold tracking-tight">Notifications récentes</CardTitle>
               {unreadCount > 0 && (
                 <Badge variant="secondary" className="rounded-full text-xs font-semibold px-2 py-0.5 bg-primary/10 text-primary border-none">
-                  {unreadCount} New
+                  {unreadCount} nouvelle{unreadCount > 1 ? 's' : ''}
                 </Badge>
               )}
             </div>
             <CardDescription className="text-xs text-muted-foreground mt-0.5">
-              Live alerts and system activity updates
+              Alertes en direct et activité du système
             </CardDescription>
           </div>
         </div>
 
         <Link href="/notifications">
           <Button variant="ghost" size="sm" className="gap-1 text-xs font-medium text-muted-foreground hover:text-foreground">
-            <span>View All</span>
+            <span>Voir tout</span>
             <ArrowRight className="h-3.5 w-3.5" />
           </Button>
         </Link>
@@ -85,9 +85,9 @@ export function NotificationsPanel() {
               <BellOff className="h-6 w-6 text-muted-foreground/70" />
             </div>
             <div className="space-y-1">
-              <p className="text-sm font-bold text-foreground">No Recent Notifications</p>
+              <p className="text-sm font-bold text-foreground">Aucune notification récente</p>
               <p className="text-xs text-muted-foreground max-w-[260px]">
-                You&apos;re all caught up! Order alerts, stock alerts and delegate updates will appear here.
+                Vous êtes à jour ! Les alertes de commandes, de stocks et les mises à jour apparaîtront ici.
               </p>
             </div>
           </div>
@@ -114,7 +114,7 @@ export function NotificationsPanel() {
                         {n.title}
                       </span>
                       <span className="text-[10px] text-muted-foreground font-medium flex-shrink-0">
-                        {n.timestamp ? n.timestamp : 'Just now'}
+                        {n.timestamp ? n.timestamp : "À l'instant"}
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground leading-snug mt-0.5 line-clamp-1">
@@ -133,10 +133,10 @@ export function NotificationsPanel() {
         {/* Card Footer Action */}
         <div className="pt-3 mt-2 border-t border-border/30 flex items-center justify-between text-xs text-muted-foreground px-1">
           <span className="flex items-center gap-1.5">
-            <CheckCheck className="h-3.5 w-3.5 text-emerald-600" /> All systems operational
+            <CheckCheck className="h-3.5 w-3.5 text-emerald-600" /> Tous les systèmes sont opérationnels
           </span>
           <Link href="/notifications" className="font-semibold text-primary hover:underline">
-            Mark all read
+            Tout marquer comme lu
           </Link>
         </div>
       </CardContent>

@@ -11,7 +11,7 @@ export interface ExtendedClient extends Client {
 }
 
 export type ClientStatus = 'active' | 'inactive' | 'pending' | 'blocked';
-export type SortField = 'name' | 'clientCode' | 'phone' | 'region' | 'delegateName' | 'totalOrders' | 'totalSpent' | 'status' | 'createdAt';
+export type SortField = 'name' | 'clientCode' | 'phone' | 'region' | 'delegateName' | 'totalOrders' | 'totalSpent' | 'outstandingBalance' | 'status' | 'createdAt';
 export type SortDirection = 'asc' | 'desc';
 
 export interface ClientFilters {

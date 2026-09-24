@@ -155,6 +155,8 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
 
         final createdAtStr = item['created_at']?.toString();
         final createdAt = createdAtStr != null ? (DateTime.tryParse(createdAtStr) ?? DateTime.now()) : DateTime.now();
+        final updatedAtStr = item['updated_at']?.toString();
+        final updatedAt = updatedAtStr != null ? (DateTime.tryParse(updatedAtStr) ?? createdAt) : createdAt;
 
         final rawTotal = (item['total_amount'] as num?)?.toDouble() ??
             (item['subtotal'] as num?)?.toDouble();
@@ -166,15 +168,46 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
             client: clientObj,
             items: itemsList,
             notes: notes,
+            rejectionReason: item['rejection_reason']?.toString() ?? item['rejectionReason']?.toString(),
             status: status,
             createdAt: createdAt,
-            updatedAt: createdAt,
+            updatedAt: updatedAt,
             rawTotalAmount: rawTotal,
           ),
         );
       }
     }
     return loaded;
+  }
+
+  Future<Order?> refreshOrder(String orderId) async {
+    try {
+      final response = await ApiService.get('/orders/$orderId');
+      if (response is Map<String, dynamic>) {
+        final data = response['data'] is Map<String, dynamic> ? response['data'] : response;
+        if (data is Map<String, dynamic>) {
+          final parsed = _parseOrdersList([data]);
+          if (parsed.isNotEmpty) {
+            final updatedOrder = parsed.first;
+            final index = state.orders.indexWhere(
+              (o) => o.id == updatedOrder.id || o.orderNumber == updatedOrder.orderNumber,
+            );
+            if (index != -1) {
+              final newOrders = List<Order>.from(state.orders);
+              newOrders[index] = updatedOrder;
+              state = state.copyWith(orders: newOrders);
+            } else {
+              state = state.copyWith(orders: [updatedOrder, ...state.orders]);
+            }
+            return updatedOrder;
+          }
+        }
+      }
+    } catch (_) {
+      // Fallback: reload all orders
+      await loadOrders(isRefresh: true);
+    }
+    return null;
   }
 
   Future<void> loadOrders({bool isRefresh = false}) async {

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
+import { fr } from 'date-fns/locale';
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -16,11 +17,12 @@ import { RoleGuard } from '@/components/auth/role-guard';
 
 export default function NewClientPage() {
   const [mounted, setMounted] = useState(false);
-  const [currentDate, setCurrentDate] = useState<string>('Friday, July 31, 2026');
+  const [currentDate, setCurrentDate] = useState<string>('');
 
   useEffect(() => {
     setMounted(true);
-    setCurrentDate(format(new Date(), 'EEEE, MMMM d, yyyy'));
+    const formattedDate = format(new Date(), 'EEEE d MMMM yyyy', { locale: fr });
+    setCurrentDate(formattedDate.charAt(0).toUpperCase() + formattedDate.slice(1));
   }, []);
 
   if (!mounted) return null;
@@ -35,7 +37,7 @@ export default function NewClientPage() {
               <BreadcrumbList>
                 <BreadcrumbItem>
                   <BreadcrumbLink href="/dashboard" className="text-muted-foreground text-xs hover:text-foreground transition-colors">
-                    Home
+                    Accueil
                   </BreadcrumbLink>
                 </BreadcrumbItem>
                 <BreadcrumbSeparator />
@@ -47,7 +49,7 @@ export default function NewClientPage() {
                 <BreadcrumbSeparator />
                 <BreadcrumbItem>
                   <BreadcrumbLink href="/clients/new" className="text-foreground text-xs font-semibold capitalize">
-                    New Client
+                    Nouveau Client
                   </BreadcrumbLink>
                 </BreadcrumbItem>
               </BreadcrumbList>
@@ -58,10 +60,10 @@ export default function NewClientPage() {
               </div>
               <div>
                 <h1 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight">
-                  Add New Client
+                  Ajouter un Nouveau Client
                 </h1>
                 <p className="text-sm text-muted-foreground">
-                  Onboard new customer account into STI distribution system.
+                  Enregistrer un nouveau compte client dans le système de distribution STI.
                 </p>
               </div>
             </div>

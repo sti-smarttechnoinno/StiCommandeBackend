@@ -63,9 +63,11 @@ import {
   History,
   Eye,
   Pencil,
+  MessageSquareText,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { usePermissions } from '@/hooks/use-permissions';
+import { RejectOrderDialog } from '@/features/orders/components/reject-order-dialog';
 
 export default function OrderDetailPage() {
   const params = useParams();
@@ -80,6 +82,20 @@ export default function OrderDetailPage() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
+
+  const handleConfirmReject = async (orderId: string, reason: string) => {
+    // Immediately reflect rejection in UI and reset validated quantities
+    setOrder((prev) => (prev ? { ...prev, status: 'rejected', rejection_reason: reason } : null));
+    setValidatedQty({});
+    try {
+      await ordersService.updateStatus(orderId, 'rejected', undefined, undefined, reason);
+      toast.success('Commande rejetée avec succès.');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'Erreur lors du rejet de la commande.');
+      throw err;
+    }
+  };
 
   // Stepper state for item-level validation
   const [validatedQty, setValidatedQty] = useState<Record<string, number>>({});
@@ -161,6 +177,10 @@ export default function OrderDetailPage() {
   };
 
   const initValidatedQtyMap = (orderData: OrderData) => {
+    if (orderData.status === 'rejected' || orderData.status === 'cancelled') {
+      setValidatedQty({});
+      return;
+    }
     const isCurrentlyPartial = orderData.status === 'partially_validated';
     const initial: Record<string, number> = {};
     (orderData.items || []).forEach((item, index) => {
@@ -181,6 +201,7 @@ export default function OrderDetailPage() {
   }, [id]);
 
   // Derived Calculations
+  const isRejected = order?.status === 'rejected' || order?.status === 'cancelled';
   const isFullyCompleted = order?.status === 'validated' || order?.status === 'delivered';
   const isCurrentlyPartial = order?.status === 'partially_validated';
 
@@ -189,54 +210,61 @@ export default function OrderDetailPage() {
   }, [order]);
 
   const totalAlreadyValQty = useMemo(() => {
+    if (isRejected) return 0;
     if (order?.status === 'validated' || order?.status === 'delivered') {
       return totalOrderedQty;
     }
     return (order?.items || []).reduce((sum, item) => {
       return sum + (isCurrentlyPartial ? (item.validated_quantity ?? 0) : 0);
     }, 0);
-  }, [order, isCurrentlyPartial, totalOrderedQty]);
+  }, [order, isCurrentlyPartial, totalOrderedQty, isRejected]);
 
-  const totalRemainingToValidateQty = Math.max(0, totalOrderedQty - totalAlreadyValQty);
+  const totalRemainingToValidateQty = isRejected || isFullyCompleted ? 0 : Math.max(0, totalOrderedQty - totalAlreadyValQty);
 
   const newSelectedQtySum = useMemo(() => {
-    if (!order?.items) return 0;
+    if (isRejected || !order?.items) return 0;
     return order.items.reduce((sum, item, idx) => {
       const key = item.id || `item-${idx}`;
       return sum + (validatedQty[key] ?? 0);
     }, 0);
-  }, [order, validatedQty]);
+  }, [order, validatedQty, isRejected]);
 
-  const finalTotalValidatedQty = isCurrentlyPartial
+  const finalTotalValidatedQty = isRejected
+    ? 0
+    : isCurrentlyPartial
     ? totalAlreadyValQty + newSelectedQtySum
+    : isFullyCompleted
+    ? totalOrderedQty
     : newSelectedQtySum;
 
   const newSelectedAmountSum = useMemo(() => {
-    if (!order?.items) return 0;
+    if (isRejected || !order?.items) return 0;
     return order.items.reduce((sum, item, idx) => {
       const key = item.id || `item-${idx}`;
       const qty = validatedQty[key] ?? 0;
       return sum + qty * (item.unit_price || 0);
     }, 0);
-  }, [order, validatedQty]);
+  }, [order, validatedQty, isRejected]);
 
   const totalAlreadyValAmount = useMemo(() => {
-    if (!order?.items) return 0;
+    if (isRejected || !order?.items) return 0;
     return order.items.reduce((sum, item) => {
       const alreadyVal = isCurrentlyPartial ? (item.validated_quantity ?? 0) : 0;
       return sum + alreadyVal * (item.unit_price || 0);
     }, 0);
-  }, [order, isCurrentlyPartial]);
+  }, [order, isCurrentlyPartial, isRejected]);
 
-  const isFullValidation = finalTotalValidatedQty === totalOrderedQty;
+  const isFullValidation = !isRejected && finalTotalValidatedQty === totalOrderedQty;
   const isZeroSelection = newSelectedQtySum === 0;
 
-  const validationProgress = totalOrderedQty > 0
+  const validationProgress = isRejected
+    ? 0
+    : totalOrderedQty > 0
     ? Math.min(100, Math.round((finalTotalValidatedQty / totalOrderedQty) * 100))
     : 0;
 
   const handleQtyChange = (itemId: string, maxQtyAllowed: number, delta: number) => {
-    if (isFullyCompleted) return;
+    if (isFullyCompleted || isRejected) return;
     setValidatedQty((prev) => {
       const current = prev[itemId] ?? maxQtyAllowed;
       const next = Math.max(0, Math.min(maxQtyAllowed, current + delta));
@@ -244,8 +272,20 @@ export default function OrderDetailPage() {
     });
   };
 
+  const handleQtyInputChange = (itemId: string, maxQtyAllowed: number, rawVal: string) => {
+    if (isFullyCompleted || isRejected) return;
+    if (rawVal === '') {
+      setValidatedQty((prev) => ({ ...prev, [itemId]: 0 }));
+      return;
+    }
+    const parsed = parseInt(rawVal, 10);
+    if (isNaN(parsed)) return;
+    const clamped = Math.max(0, Math.min(maxQtyAllowed, parsed));
+    setValidatedQty((prev) => ({ ...prev, [itemId]: clamped }));
+  };
+
   const handleResetUnits = () => {
-    if (!order || isFullyCompleted) return;
+    if (!order || isFullyCompleted || isRejected) return;
     initValidatedQtyMap(order);
     toast.info('Quantités réinitialisées au solde restant.');
   };
@@ -702,11 +742,11 @@ export default function OrderDetailPage() {
                     variant="outline"
                     size="sm"
                     disabled={submitting}
-                    onClick={() => handleStatusUpdate('cancelled')}
+                    onClick={() => setIsRejectDialogOpen(true)}
                     className="gap-2 rounded-full h-9 px-3.5 font-semibold text-xs text-rose-600 border-rose-500/30 hover:bg-rose-500/10 transition-colors"
                   >
                     <XCircle className="h-3.5 w-3.5" />
-                    <span>Refuser</span>
+                    <span>Rejeter</span>
                   </Button>
                   <Button
                     size="sm"
@@ -733,6 +773,16 @@ export default function OrderDetailPage() {
 
               {order.status === 'partially_validated' && (
                 <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={submitting}
+                    onClick={() => setIsRejectDialogOpen(true)}
+                    className="gap-2 rounded-full h-9 px-3.5 font-semibold text-xs text-rose-600 border-rose-500/30 hover:bg-rose-500/10 transition-colors"
+                  >
+                    <XCircle className="h-3.5 w-3.5" />
+                    <span>Rejeter</span>
+                  </Button>
                   <Button
                     size="sm"
                     disabled={submitting}
@@ -809,11 +859,11 @@ export default function OrderDetailPage() {
                 </Badge>
               )}
 
-              {order.status === 'cancelled' && (
+              {(order.status === 'cancelled' || order.status === 'rejected') && (
                 <>
                   <Badge className="bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30 text-xs font-bold h-9 px-4 inline-flex items-center gap-2 rounded-full shadow-xs">
                     <XCircle className="h-4 w-4" />
-                    <span>Commande Annulée</span>
+                    <span>{order.status === 'rejected' ? 'Commande Rejetée' : 'Commande Annulée'}</span>
                   </Badge>
                   <Button
                     variant="outline"
@@ -833,6 +883,35 @@ export default function OrderDetailPage() {
           )}
         </div>
       </div>
+
+      {/* Rejection Alert Banner if Order is Rejected */}
+      {isRejected && (
+        <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-800 dark:text-rose-300 shadow-xs">
+          <div className="flex items-start gap-3">
+            <XCircle className="h-5 w-5 text-rose-600 dark:text-rose-400 mt-0.5 shrink-0" />
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <h4 className="font-bold text-sm text-rose-700 dark:text-rose-300">Commande Rejetée</h4>
+                <Badge className="bg-rose-600 text-white border-0 text-[10px] font-bold uppercase tracking-wider">
+                  Rejetée
+                </Badge>
+              </div>
+              {order.rejection_reason ? (
+                <p className="text-xs text-rose-700 dark:text-rose-300">
+                  <strong>Motif du rejet :</strong> « {order.rejection_reason} »
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Aucun motif de rejet spécifique n&apos;a été renseigné.
+                </p>
+              )}
+              <p className="text-[11px] text-muted-foreground">
+                Cette commande a été annulée/rejetée et aucune validation ultérieure ne peut être réalisée.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Order Hero Card */}
       <Card className="border border-border/60 shadow-md rounded-2xl overflow-hidden bg-card/90 backdrop-blur-md">
@@ -998,7 +1077,11 @@ export default function OrderDetailPage() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  {isFullyCompleted ? (
+                  {isRejected ? (
+                    <Badge className="bg-rose-500/10 text-rose-600 border border-rose-500/20 text-xs font-bold px-2.5 py-0.5">
+                      Commande Rejetée
+                    </Badge>
+                  ) : isFullyCompleted ? (
                     <Badge className="bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 text-xs font-bold px-2.5 py-0.5">
                       Validation Totale 100%
                     </Badge>
@@ -1017,7 +1100,17 @@ export default function OrderDetailPage() {
 
             <CardContent className="p-0">
               {/* Alert Banners */}
-              {isFullyCompleted ? (
+              {isRejected ? (
+                <div className="m-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-700 dark:text-rose-400 text-xs font-semibold flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <XCircle className="h-4 w-4 text-rose-600 flex-shrink-0" />
+                    <span>
+                      Cette commande a été rejetée. Les stocks alloués ont été libérés et aucune validation supplémentaire n'est permise.
+                    </span>
+                  </div>
+                  <span className="font-bold text-[11px] uppercase">Rejetée</span>
+                </div>
+              ) : isFullyCompleted ? (
                 <div className="m-4 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-xs font-semibold flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
@@ -1068,8 +1161,8 @@ export default function OrderDetailPage() {
                       const key = item.id || `item-${idx}`;
                       const alreadyVal = isCurrentlyPartial ? (item.validated_quantity ?? 0) : 0;
                       const remainingLimit = isCurrentlyPartial ? Math.max(0, item.quantity - alreadyVal) : item.quantity;
-                      const currentVal = validatedQty[key] ?? remainingLimit;
-                      const itemLineTotal = currentVal * (item.unit_price || 0);
+                      const currentVal = isRejected ? 0 : (validatedQty[key] ?? remainingLimit);
+                      const itemLineTotal = isRejected ? 0 : currentVal * (item.unit_price || 0);
 
                       return (
                         <tr key={key} className="border-b border-border/30 hover:bg-muted/20 transition-colors">
@@ -1096,9 +1189,9 @@ export default function OrderDetailPage() {
                           <td className="px-3 py-3 text-center">
                             <div className={cn(
                               "inline-flex items-center gap-1 rounded-lg p-0.5",
-                              isFullyCompleted ? "bg-muted/20 border border-transparent" : "bg-muted/50 border border-border/50"
+                              (isFullyCompleted || isRejected) ? "bg-muted/20 border border-transparent" : "bg-muted/50 border border-border/50"
                             )}>
-                              {!isFullyCompleted && (
+                              {!isFullyCompleted && !isRejected && (
                                 <Button
                                   type="button"
                                   variant="ghost"
@@ -1112,14 +1205,34 @@ export default function OrderDetailPage() {
                                 </Button>
                               )}
 
-                              <span className={cn(
-                                "w-10 text-center font-bold text-xs px-1",
-                                currentVal === remainingLimit ? "text-emerald-600 dark:text-emerald-400" : currentVal > 0 ? "text-amber-600 dark:text-amber-400" : "text-rose-600"
-                              )}>
-                                {currentVal}
-                              </span>
+                              {isFullyCompleted || isRejected ? (
+                                <span className="w-12 text-center font-bold text-xs px-1 text-muted-foreground">
+                                  {currentVal}
+                                </span>
+                              ) : (
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={remainingLimit}
+                                  value={currentVal}
+                                  onChange={(e) => handleQtyInputChange(key, remainingLimit, e.target.value)}
+                                  onFocus={(e) => e.target.select()}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                                  }}
+                                  className={cn(
+                                    "w-12 h-6 text-center font-bold text-xs bg-background/90 border border-border/50 rounded focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none",
+                                    currentVal === remainingLimit
+                                      ? "text-emerald-600 dark:text-emerald-400"
+                                      : currentVal > 0
+                                      ? "text-amber-600 dark:text-amber-400"
+                                      : "text-rose-600"
+                                  )}
+                                  title={`Saisir la quantité validée (0 à ${remainingLimit})`}
+                                />
+                              )}
 
-                              {!isFullyCompleted && (
+                              {!isFullyCompleted && !isRejected && (
                                 <Button
                                   type="button"
                                   variant="ghost"
@@ -1148,13 +1261,17 @@ export default function OrderDetailPage() {
                   <tfoot className="bg-muted/30 border-t border-border/40 font-bold">
                     <tr>
                       <td colSpan={isCurrentlyPartial ? 5 : 3} className="px-4 py-3 text-right text-muted-foreground">
-                        {isCurrentlyPartial ? 'Total Solde Restant Sélectionné :' : 'Total Validé :'}
+                        {isRejected ? 'Total Validé :' : isCurrentlyPartial ? 'Total Solde Restant Sélectionné :' : 'Total Validé :'}
                       </td>
                       <td className="px-3 py-3 text-center font-extrabold text-foreground">
-                        {isCurrentlyPartial ? `${newSelectedQtySum} / ${totalRemainingToValidateQty} unités` : `${finalTotalValidatedQty} / ${totalOrderedQty} unités`}
+                        {isRejected
+                          ? `0 / ${totalOrderedQty} unités`
+                          : isCurrentlyPartial
+                          ? `${newSelectedQtySum} / ${totalRemainingToValidateQty} unités`
+                          : `${finalTotalValidatedQty} / ${totalOrderedQty} unités`}
                       </td>
                       <td className="px-4 py-3 text-right font-extrabold text-primary text-sm">
-                        {formatCurrency(isCurrentlyPartial ? newSelectedAmountSum : (totalAlreadyValAmount + newSelectedAmountSum))}
+                        {formatCurrency(isRejected ? 0 : isCurrentlyPartial ? newSelectedAmountSum : (totalAlreadyValAmount + newSelectedAmountSum))}
                       </td>
                     </tr>
                   </tfoot>
@@ -1162,7 +1279,7 @@ export default function OrderDetailPage() {
               </div>
 
               {/* Action Stepper controls (bottom bar) */}
-              {!isFullyCompleted && (
+              {!isFullyCompleted && !isRejected && (
                 <div className="p-4 bg-muted/20 border-t border-border/30 flex items-center justify-between gap-3 flex-wrap">
                   <div className="flex items-center gap-2">
                     <Button
@@ -1175,6 +1292,19 @@ export default function OrderDetailPage() {
                       <RotateCcw className="h-3.5 w-3.5 text-muted-foreground" />
                       <span>Réinitialiser</span>
                     </Button>
+
+                    {can('orders.reject') && (
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => setIsRejectDialogOpen(true)}
+                        className="h-8 text-xs font-semibold gap-1.5 rounded-lg"
+                      >
+                        <XCircle className="h-3.5 w-3.5" />
+                        <span>Rejeter la commande</span>
+                      </Button>
+                    )}
 
                     {isCurrentlyPartial && totalRemainingToValidateQty > 0 && (
                       <Button
@@ -1500,22 +1630,50 @@ export default function OrderDetailPage() {
             </CardContent>
           </Card>
 
-          {/* Order Notes Card */}
-          {order.notes && (
-            <Card className="border border-border/60 shadow-xs rounded-2xl bg-card">
-              <CardHeader className="pb-2 border-b border-border/40">
-                <div className="flex items-center gap-2">
-                  <FileCheck className="h-4 w-4 text-muted-foreground" />
-                  <CardTitle className="text-sm font-bold tracking-tight">Instructions & Notes</CardTitle>
+          {/* Delegate Note & Rejection Reason Cards */}
+          <div className={cn("grid gap-4", order.rejection_reason ? "grid-cols-1 md:grid-cols-2" : "grid-cols-1")}>
+            <Card className="border border-border/60 shadow-xs rounded-2xl bg-card overflow-hidden">
+              <CardHeader className="pb-3 border-b border-border/40">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <MessageSquareText className="h-4 w-4 text-muted-foreground" />
+                    <CardTitle className="text-sm font-bold tracking-tight">Note du Délégué Commercial</CardTitle>
+                  </div>
+                  {delegateName && (
+                    <span className="text-xs text-muted-foreground font-medium">
+                      {delegateName}
+                    </span>
+                  )}
                 </div>
               </CardHeader>
               <CardContent className="p-4">
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  {order.notes}
+                <p className={cn("text-xs leading-relaxed", order.notes ? "text-foreground font-normal" : "text-muted-foreground italic")}>
+                  {order.notes || "Aucune note particulière laissée par le délégué pour cette commande."}
                 </p>
               </CardContent>
             </Card>
-          )}
+
+            {order.rejection_reason && (
+              <Card className="border border-border/60 shadow-xs rounded-2xl bg-card overflow-hidden">
+                <CardHeader className="pb-3 border-b border-border/40">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <XCircle className="h-4 w-4 text-rose-500" />
+                      <CardTitle className="text-sm font-bold tracking-tight text-rose-600 dark:text-rose-400">Motif du Rejet</CardTitle>
+                    </div>
+                    <Badge variant="outline" className="text-[10px] font-bold text-rose-600 bg-rose-500/10 border-rose-500/20 uppercase tracking-wider">
+                      Rejetée
+                    </Badge>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-4">
+                  <p className="text-xs text-foreground leading-relaxed font-normal">
+                    {order.rejection_reason}
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+          </div>
         </div>
 
         {/* Right Section: Details & Stakeholders (1 Span) */}
@@ -1713,6 +1871,19 @@ export default function OrderDetailPage() {
           </Card>
         </div>
       </div>
+
+      {/* Reject Order Dialog */}
+      <RejectOrderDialog
+        open={isRejectDialogOpen}
+        onOpenChange={setIsRejectDialogOpen}
+        order={order ? {
+          id: order.id,
+          orderNumber: order.order_code,
+          clientName: order.client_name,
+          delegateName: delegateName,
+        } : null}
+        onConfirm={handleConfirmReject}
+      />
     </div>
   );
 }

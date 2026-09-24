@@ -9,6 +9,7 @@ class Order {
   final Client client;
   final List<OrderItem> items;
   final String? notes;
+  final String? rejectionReason;
   final OrderStatus status;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -20,6 +21,7 @@ class Order {
     required this.client,
     required this.items,
     this.notes,
+    this.rejectionReason,
     this.status = OrderStatus.pending,
     required this.createdAt,
     required this.updatedAt,

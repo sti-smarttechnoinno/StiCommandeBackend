@@ -10,6 +10,7 @@ use App\Models\UserTask;
 use App\Services\FirebaseService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
@@ -21,7 +22,10 @@ class UserTaskController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $currentUser = $request->user();
+        $currentUser = $request->user() ?? auth('sanctum')->user();
+        if (!$currentUser) {
+            return response()->json(['error' => 'Non authentifié'], 401);
+        }
         $query = UserTask::with(['assignedBy:id,name,role', 'assignedTo:id,name,role,region,wilaya']);
 
         // Privacy isolation:
@@ -128,6 +132,8 @@ class UserTaskController extends Controller
                 'is_overdue' => $task->isOverdue(),
                 'assigned_by_name' => $task->assignedBy?->name ?? 'Direction',
                 'assigned_to_name' => $task->assignedTo?->name ?? 'Collaborateur',
+                'assigned_by_id' => $task->assigned_by,
+                'assigned_to_id' => $task->assigned_to,
                 'assigned_by' => [
                     'id' => $task->assignedBy?->id,
                     'name' => $task->assignedBy?->name ?? 'Direction',
@@ -149,6 +155,8 @@ class UserTaskController extends Controller
             'pending' => $tasks->where('status', 'pending')->count(),
             'in_progress' => $tasks->where('status', 'in_progress')->count(),
             'completed' => $tasks->where('status', 'completed')->count(),
+            'validated' => $tasks->where('status', 'validated')->count(),
+            'problem' => $tasks->where('status', 'problem')->count(),
             'cancelled' => $tasks->where('status', 'cancelled')->count(),
             'private_count' => $tasks->where('is_private', true)->where('assigned_to', $currentUser->id)->count(),
             'with_attachment' => $tasks->where('has_attachment', true)->count(),
@@ -167,7 +175,10 @@ class UserTaskController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
-        $currentUser = $request->user();
+        $currentUser = $request->user() ?? auth('sanctum')->user();
+        if (!$currentUser) {
+            return response()->json(['error' => 'Non authentifié'], 401);
+        }
 
         $isPrivate = filter_var($request->input('is_private'), FILTER_VALIDATE_BOOLEAN)
             || $request->input('is_private') === '1'
@@ -336,21 +347,49 @@ class UserTaskController extends Controller
     }
 
     /**
-     * Update task status (e.g. from pending to in_progress or completed) with audit trail logging.
+     * Show a single task detail.
+     */
+    public function show(Request $request, int $id): JsonResponse
+    {
+        $currentUser = $request->user() ?? auth('sanctum')->user();
+        if (!$currentUser) {
+            return response()->json(['error' => 'Non authentifié'], 401);
+        }
+
+        $task = UserTask::with(['assignedBy:id,name,role', 'assignedTo:id,name,role,region,wilaya'])->findOrFail($id);
+
+        if ($task->is_private && $task->assigned_to !== $currentUser->id && $task->assigned_by !== $currentUser->id && !$currentUser->isAdmin()) {
+            return response()->json(['error' => 'Non autorisé'], 403);
+        }
+
+        return response()->json([
+            'success' => true,
+            'task' => $task,
+        ]);
+    }
+
+    /**
+     * Update task status with audit trail logging, assigner/assignee notifications and WebSocket broadcast.
      */
     public function updateStatus(Request $request, int $id): JsonResponse
     {
-        $currentUser = $request->user();
+        $currentUser = $request->user() ?? auth('sanctum')->user();
+        if (!$currentUser) {
+            return response()->json(['error' => 'Non authentifié'], 401);
+        }
+
         $task = UserTask::with(['assignedBy', 'assignedTo'])->findOrFail($id);
 
-        // Authorization: Assignee, creator, or admin can update status
+        // Authorization: Assignee, creator/assigner, or admin can update status
         if ($task->assigned_to !== $currentUser->id && $task->assigned_by !== $currentUser->id && !$currentUser->isAdmin()) {
             return response()->json(['error' => 'Non autorisé'], 403);
         }
 
         $validator = Validator::make($request->all(), [
-            'status' => 'required|string|in:pending,in_progress,completed,cancelled',
+            'status' => 'required|string|in:pending,in_progress,completed,validated,problem,cancelled',
             'completion_notes' => 'nullable|string|max:2000',
+            'notes' => 'nullable|string|max:2000',
+            'comment' => 'nullable|string|max:2000',
             'achieved_count' => 'nullable|integer|min:0',
         ]);
 
@@ -363,7 +402,14 @@ class UserTaskController extends Controller
 
         $oldStatus = $task->status;
         $newStatus = $request->input('status');
-        $notes = $request->input('completion_notes');
+        $notes = $request->input('completion_notes') ?? $request->input('notes') ?? $request->input('comment');
+
+        // Business rule: Only assigner or admin can validate or report problem
+        if (in_array($newStatus, ['validated', 'problem']) && $task->assigned_by !== $currentUser->id && !$currentUser->isAdmin()) {
+            return response()->json([
+                'error' => "Seul le responsable ayant assigné la mission ou un administrateur peut valider ou signaler un problème sur cette mission."
+            ], 403);
+        }
 
         $task->status = $newStatus;
         if ($notes !== null) {
@@ -373,11 +419,23 @@ class UserTaskController extends Controller
             $task->achieved_count = (int) $request->input('achieved_count');
         }
 
-        if ($newStatus === 'completed' && $oldStatus !== 'completed') {
+        if (($newStatus === 'completed' || $newStatus === 'validated') && !$task->completed_at) {
             $task->completed_at = now();
         }
 
         $task->save();
+
+        // French labels for audit trail & notifications
+        $statusLabels = [
+            'pending' => 'En attente',
+            'in_progress' => 'En cours',
+            'completed' => 'Terminée',
+            'validated' => 'Validée',
+            'problem' => 'Problème signalé',
+            'cancelled' => 'Annulée',
+        ];
+        $oldStatusLabel = $statusLabels[$oldStatus] ?? $oldStatus;
+        $newStatusLabel = $statusLabels[$newStatus] ?? $newStatus;
 
         // Record in audit trail history
         TaskHistory::create([
@@ -386,15 +444,19 @@ class UserTaskController extends Controller
             'action' => 'status_updated',
             'from_status' => $oldStatus,
             'to_status' => $newStatus,
-            'comment' => $notes ?: "Statut passé de '{$oldStatus}' à '{$newStatus}' par {$currentUser->name}",
+            'comment' => $notes ?: "Statut passé de '{$oldStatusLabel}' à '{$newStatusLabel}' par {$currentUser->name}",
             'created_at' => now(),
         ]);
 
-        // If completed by assignee, notify the creator/manager
-        if ($newStatus === 'completed' && $task->assignedBy && $task->assignedBy->id !== $currentUser->id) {
+        // 1. If updated by assignee (commercial), notify the person who assigned the mission
+        if ($currentUser->id === $task->assigned_to && $task->assignedBy && $task->assignedBy->id !== $currentUser->id) {
             $manager = $task->assignedBy;
-            $notifTitle = "Tâche complétée : {$task->title}";
-            $notifBody = "{$currentUser->name} a terminé la tâche '{$task->title}'." . ($notes ? " Note: {$notes}" : "");
+            $notifTitle = $newStatus === 'completed'
+                ? "Mission terminée : {$task->title}"
+                : "Mise à jour mission : {$task->title}";
+            $notifBody = $newStatus === 'completed'
+                ? "{$currentUser->name} a terminé la mission '{$task->title}'." . ($notes ? " Note : {$notes}" : "")
+                : "{$currentUser->name} a passé la mission à '{$newStatusLabel}'." . ($notes ? " Note : {$notes}" : "");
 
             try {
                 Notification::create([
@@ -416,19 +478,100 @@ class UserTaskController extends Controller
                         $notifTitle,
                         $notifBody,
                         [
-                            'type' => 'task_completed',
+                            'type' => 'task_status_changed',
                             'task_id' => (string) $task->id,
-                            'completed_by' => (string) $currentUser->name,
+                            'status' => (string) $newStatus,
+                            'updated_by' => (string) $currentUser->name,
+                            'click_action' => 'FLUTTER_NOTIFICATION_CLICK',
                         ]
                     );
                 }
-            } catch (\Throwable $e) {}
+            } catch (\Throwable $e) {
+                Log::warning("Assigner task notification error: " . $e->getMessage());
+            }
+        }
+
+        // 2. If updated by assigner or admin, notify the assignee (commercial)
+        if ($currentUser->id !== $task->assigned_to && $task->assignedTo && $task->assignedTo->id !== $currentUser->id) {
+            $assignee = $task->assignedTo;
+            if ($newStatus === 'validated') {
+                $notifTitle = "Mission validée : {$task->title}";
+                $notifBody = "{$currentUser->name} a validé votre mission." . ($notes ? " Note : {$notes}" : "");
+            } elseif ($newStatus === 'problem') {
+                $notifTitle = "Problème signalé : {$task->title}";
+                $notifBody = "{$currentUser->name} a signalé un problème sur votre mission : {$notes}";
+            } elseif ($newStatus === 'cancelled') {
+                $notifTitle = "Mission annulée : {$task->title}";
+                $notifBody = "{$currentUser->name} a annulé la mission." . ($notes ? " Note : {$notes}" : "");
+            } else {
+                $notifTitle = "Mise à jour mission : {$task->title}";
+                $notifBody = "{$currentUser->name} a mis à jour votre mission vers '{$newStatusLabel}'." . ($notes ? " Note : {$notes}" : "");
+            }
+
+            try {
+                Notification::create([
+                    'title' => $notifTitle,
+                    'description' => $notifBody,
+                    'category' => 'system',
+                    'priority' => $newStatus === 'problem' ? 'urgent' : 'high',
+                    'status' => 'unread',
+                    'user' => $assignee->name,
+                    'region' => $assignee->region ?? 'All',
+                    'module' => 'Tasks',
+                    'reference_id' => "TSK-{$task->id}",
+                    'read' => false,
+                ]);
+
+                $targetRecipient = !empty($assignee->fcm_token) ? $assignee->fcm_token : '/topics/sti_delegates';
+                app(FirebaseService::class)->sendPush(
+                    $targetRecipient,
+                    $notifTitle,
+                    $notifBody,
+                    [
+                        'type' => 'task_status_changed',
+                        'task_id' => (string) $task->id,
+                        'status' => (string) $newStatus,
+                        'updated_by' => (string) $currentUser->name,
+                        'click_action' => 'FLUTTER_NOTIFICATION_CLICK',
+                    ]
+                );
+            } catch (\Throwable $e) {
+                Log::warning("Assignee task notification error: " . $e->getMessage());
+            }
+        }
+
+        // 3. Broadcast real-time WebSocket event
+        try {
+            Http::timeout(2)->post('http://127.0.0.1:8085/broadcast', [
+                'type' => 'TASK_STATUS_CHANGED',
+                'task_id' => $task->id,
+                'status' => $newStatus,
+                'old_status' => $oldStatus,
+                'completion_notes' => $task->completion_notes,
+                'updated_by' => [
+                    'id' => $currentUser->id,
+                    'name' => $currentUser->name,
+                    'role' => $currentUser->role,
+                ],
+                'task' => [
+                    'id' => $task->id,
+                    'title' => $task->title,
+                    'status' => $task->status,
+                    'completion_notes' => $task->completion_notes,
+                    'assigned_by' => $task->assigned_by,
+                    'assigned_to' => $task->assigned_to,
+                    'assigned_to_name' => $task->assignedTo?->name,
+                    'assigned_by_name' => $task->assignedBy?->name,
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            // Non-blocking WebSocket broadcast
         }
 
         return response()->json([
             'success' => true,
-            'message' => "Statut de la tâche mis à jour vers '{$newStatus}'.",
-            'task' => $task,
+            'message' => "Statut de la tâche mis à jour vers '{$newStatusLabel}'.",
+            'task' => $task->fresh(['assignedBy:id,name,role', 'assignedTo:id,name,role,region,wilaya']),
         ]);
     }
 
@@ -437,10 +580,13 @@ class UserTaskController extends Controller
      */
     public function history(Request $request): JsonResponse
     {
-        $currentUser = $request->user();
+        $currentUser = $request->user() ?? auth('sanctum')->user();
+        if (!$currentUser) {
+            return response()->json(['error' => 'Non authentifié'], 401);
+        }
         $query = TaskHistory::with([
             'user:id,name,role',
-            'task:id,title,category,priority,has_attachment,attachment_name,assigned_by,assigned_to,is_private',
+            'task:id,title,description,category,priority,status,due_date,completion_notes,has_attachment,attachment_name,attachment_url,assigned_by,assigned_to,is_private',
             'task.assignedTo:id,name,role',
             'task.assignedBy:id,name,role',
         ]);
@@ -497,12 +643,27 @@ class UserTaskController extends Controller
                 'to_status' => $h->to_status,
                 'notes' => $h->comment ?? $h->notes,
                 'comment' => $h->comment ?? $h->notes,
-                'created_at' => $h->created_at->toISOString(),
-                'task' => [
-                    'id' => $h->task?->id ?? $h->task_id,
+                'task' => $h->task ? [
+                    'id' => $h->task->id,
+                    'title' => $h->task->title,
+                    'description' => $h->task->description,
+                    'status' => $h->task->status,
+                    'priority' => $h->task->priority,
+                    'category' => $h->task->category,
+                    'due_date' => $h->task->due_date?->format('Y-m-d'),
+                    'completion_notes' => $h->task->completion_notes,
+                    'has_attachment' => (bool) $h->task->has_attachment,
+                    'attachment_name' => $h->task->attachment_name,
+                    'attachment_url' => $h->task->attachment_url,
+                    'assigned_to' => $h->task->assigned_to,
+                    'assigned_to_name' => $h->task->assignedTo?->name,
+                    'assigned_by' => $h->task->assigned_by,
+                    'assigned_by_name' => $h->task->assignedBy?->name ?? 'Direction',
+                ] : [
+                    'id' => $h->task_id,
                     'title' => $h->task?->title ?? 'Tâche #' . $h->task_id,
-                    'assigned_to_name' => $h->task?->assignedTo?->name,
-                    'assigned_by_name' => $h->task?->assignedBy?->name ?? 'Direction',
+                    'assigned_to_name' => null,
+                    'assigned_by_name' => 'Direction',
                 ],
             ];
         });
@@ -518,7 +679,10 @@ class UserTaskController extends Controller
      */
     public function destroy(Request $request, int $id): JsonResponse
     {
-        $currentUser = $request->user();
+        $currentUser = $request->user() ?? auth('sanctum')->user();
+        if (!$currentUser) {
+            return response()->json(['error' => 'Non authentifié'], 401);
+        }
         $task = UserTask::findOrFail($id);
 
         if ($task->assigned_by !== $currentUser->id && !$currentUser->isAdmin()) {

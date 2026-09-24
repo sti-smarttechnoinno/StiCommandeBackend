@@ -27,6 +27,7 @@ import type { OrderStatus } from '@/types';
 const STATUS_OPTIONS: { value: OrderStatus; label: string }[] = [
   { value: 'pending', label: 'Pending' },
   { value: 'validated', label: 'Validated' },
+  { value: 'partially_validated', label: 'Partially Validated' },
   { value: 'preparing', label: 'Preparing' },
   { value: 'delivered', label: 'Delivered' },
   { value: 'rejected', label: 'Rejected' },

@@ -63,7 +63,7 @@ export function OrderActions({
         <TooltipContent>Edit order</TooltipContent>
       </Tooltip>
 
-      {status === 'pending' && (
+      {(status === 'pending' || status === 'partially_validated') && (
         <>
           <Tooltip>
             <TooltipTrigger
@@ -73,7 +73,7 @@ export function OrderActions({
             >
               <Check className="h-3.5 w-3.5" />
             </TooltipTrigger>
-            <TooltipContent>Approve order</TooltipContent>
+            <TooltipContent>Valider la commande (ouvrir le détail)</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger
@@ -83,7 +83,7 @@ export function OrderActions({
             >
               <X className="h-3.5 w-3.5" />
             </TooltipTrigger>
-            <TooltipContent>Reject order</TooltipContent>
+            <TooltipContent>Rejeter la commande</TooltipContent>
           </Tooltip>
         </>
       )}
@@ -94,31 +94,44 @@ export function OrderActions({
             <MoreHorizontal className="h-3.5 w-3.5" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-44 rounded-xl p-1.5">
+        <DropdownMenuContent align="end" className="w-48 rounded-xl p-1.5">
           <DropdownMenuItem className="rounded-lg cursor-pointer text-xs" onClick={() => onView(orderId)}>
             <Eye className="mr-2 h-3.5 w-3.5 text-muted-foreground" />
-            View Order
+            Voir la commande
           </DropdownMenuItem>
+          {(status === 'pending' || status === 'partially_validated') && (
+            <>
+              <DropdownMenuItem className="rounded-lg cursor-pointer text-xs text-emerald-600 focus:text-emerald-700" onClick={() => onApprove(orderId)}>
+                <Check className="mr-2 h-3.5 w-3.5 text-emerald-600" />
+                Valider la commande
+              </DropdownMenuItem>
+              <DropdownMenuItem className="rounded-lg cursor-pointer text-xs text-rose-600 focus:text-rose-700" onClick={() => onReject(orderId)}>
+                <X className="mr-2 h-3.5 w-3.5 text-rose-600" />
+                Rejeter la commande
+              </DropdownMenuItem>
+              <DropdownMenuSeparator className="my-1" />
+            </>
+          )}
           <DropdownMenuItem className="rounded-lg cursor-pointer text-xs" onClick={() => onEdit(orderId)}>
             <Pencil className="mr-2 h-3.5 w-3.5 text-muted-foreground" />
-            Edit Order
+            Modifier
           </DropdownMenuItem>
           <DropdownMenuItem className="rounded-lg cursor-pointer text-xs" onClick={() => onPrint(orderId)}>
             <Printer className="mr-2 h-3.5 w-3.5 text-muted-foreground" />
-            Print Order
+            Imprimer
           </DropdownMenuItem>
           <DropdownMenuItem className="rounded-lg cursor-pointer text-xs" onClick={() => onDuplicate(orderId)}>
             <Copy className="mr-2 h-3.5 w-3.5 text-muted-foreground" />
-            Duplicate
+            Dupliquer
           </DropdownMenuItem>
           <DropdownMenuItem className="rounded-lg cursor-pointer text-xs">
             <ArrowRight className="mr-2 h-3.5 w-3.5 text-muted-foreground" />
-            Track Delivery
+            Suivi livraison
           </DropdownMenuItem>
           <DropdownMenuSeparator className="my-1" />
           <DropdownMenuItem className="rounded-lg cursor-pointer text-xs text-destructive focus:text-destructive" onClick={() => onDelete(orderId)}>
             <Trash2 className="mr-2 h-3.5 w-3.5" />
-            Delete Order
+            Supprimer
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

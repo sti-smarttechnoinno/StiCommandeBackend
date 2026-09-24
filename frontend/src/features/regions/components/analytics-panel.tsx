@@ -11,7 +11,18 @@ interface AnalyticsPanelProps {
   analytics?: RegionsAnalyticsResponse | null;
 }
 
-const REGIONAL_COLORS = ['#2563EB', '#22C55E', '#8B5CF6', '#F59E0B', '#EF4444', '#6B7280'];
+const REGIONAL_COLORS = [
+  '#2563EB', // Blue
+  '#10B981', // Emerald
+  '#F59E0B', // Amber
+  '#8B5CF6', // Purple
+  '#EC4899', // Pink
+  '#06B6D4', // Cyan
+  '#EF4444', // Red
+  '#F97316', // Orange
+  '#14B8A6', // Teal
+  '#6366F1', // Indigo
+];
 
 function DonutChart({
   data,
@@ -20,10 +31,23 @@ function DonutChart({
   data: { name: string; value: number; color?: string }[];
   totalRevenue: number;
 }) {
-  const regionalWithColors = data.map((r, i) => ({
-    ...r,
-    color: r.color || REGIONAL_COLORS[i % REGIONAL_COLORS.length],
-  }));
+  const usedColors = new Set<string>();
+  const regionalWithColors = data.map((r, i) => {
+    let color = r.color?.trim();
+    if (!color || usedColors.has(color.toLowerCase())) {
+      color = REGIONAL_COLORS[i % REGIONAL_COLORS.length];
+    }
+    if (usedColors.has(color.toLowerCase())) {
+      const nextUnused = REGIONAL_COLORS.find((c) => !usedColors.has(c.toLowerCase()));
+      if (nextUnused) color = nextUnused;
+    }
+    usedColors.add(color.toLowerCase());
+
+    return {
+      ...r,
+      color,
+    };
+  });
   const total = totalRevenue > 0 ? totalRevenue : regionalWithColors.reduce((s, r) => s + r.value, 0);
   let cumulativePercent = 0;
 

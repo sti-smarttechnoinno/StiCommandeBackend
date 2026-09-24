@@ -59,7 +59,7 @@ export function DelegatePerformance() {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <CardTitle className="text-base font-bold tracking-tight">Delegate Performance</CardTitle>
+              <CardTitle className="text-base font-bold tracking-tight">Performance des délégués</CardTitle>
               {delegates.length > 0 && (
                 <Badge variant="secondary" className="rounded-full text-xs font-semibold px-2 py-0.5">
                   Top {delegates.length}
@@ -67,14 +67,14 @@ export function DelegatePerformance() {
               )}
             </div>
             <CardDescription className="text-xs text-muted-foreground mt-0.5">
-              Rankings and completion metrics for active sales reps
+              Classement et indicateurs de performance des commerciaux
             </CardDescription>
           </div>
         </div>
 
         <Link href="/delegates">
           <Button variant="ghost" size="sm" className="gap-1 text-xs font-medium text-muted-foreground hover:text-foreground">
-            <span>View All</span>
+            <span>Voir tout</span>
             <ArrowRight className="h-3.5 w-3.5" />
           </Button>
         </Link>
@@ -93,14 +93,14 @@ export function DelegatePerformance() {
               <Users className="h-6 w-6 text-muted-foreground/70" />
             </div>
             <div className="space-y-1">
-              <p className="text-sm font-bold text-foreground">No Delegate Performance Data</p>
+              <p className="text-sm font-bold text-foreground">Aucune donnée de performance</p>
               <p className="text-xs text-muted-foreground max-w-[280px]">
-                Delegate rankings and achievement metrics will appear here once delegates are assigned and process orders.
+                Le classement et les objectifs des délégués apparaîtront ici une fois les commandes traitées.
               </p>
             </div>
             <Link href="/delegates/new">
               <Button variant="outline" size="sm" className="text-xs mt-1 rounded-xl">
-                Add Delegate
+                Ajouter un délégué
               </Button>
             </Link>
           </div>
@@ -108,11 +108,11 @@ export function DelegatePerformance() {
           <>
             {/* Table Column Header for Grid Alignment */}
             <div className="grid grid-cols-12 items-center gap-3 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground bg-muted/30 rounded-lg mb-1">
-              <div className="col-span-6 sm:col-span-4 md:col-span-4">Delegate</div>
-              <div className="hidden sm:block col-span-2 text-center">Orders</div>
-              <div className="hidden sm:block col-span-2 text-center">Revenue</div>
-              <div className="hidden md:block col-span-2 text-center">Rate / Target</div>
-              <div className="col-span-6 sm:col-span-4 md:col-span-2 text-right">Status</div>
+              <div className="col-span-6 sm:col-span-4 md:col-span-4">Délégué</div>
+              <div className="hidden sm:block col-span-2 text-center">Commandes</div>
+              <div className="hidden sm:block col-span-2 text-center">Chiffre d'affaires</div>
+              <div className="hidden md:block col-span-2 text-center">Taux / Objectif</div>
+              <div className="col-span-6 sm:col-span-4 md:col-span-2 text-right">Statut</div>
             </div>
 
             {/* Delegate List Rows in Pixel-Perfect Grid Columns */}
@@ -174,7 +174,7 @@ export function DelegatePerformance() {
                     variant="ghost"
                     className="px-2.5 py-0.5 rounded-full text-[11px] font-medium border-none bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                   >
-                    Active
+                    Actif
                   </Badge>
                 </div>
               </div>

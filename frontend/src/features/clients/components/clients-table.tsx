@@ -364,25 +364,37 @@ export function ClientsTable() {
         size: 80,
       },
       {
-        accessorKey: 'totalSpent',
+        accessorKey: 'outstandingBalance',
         header: () => (
           <button
             className="flex items-center gap-1 hover:text-foreground transition-colors font-bold"
-            onClick={() => handleSort('totalSpent')}
+            onClick={() => handleSort('outstandingBalance')}
           >
-            Total Spent
-            {sort.field === 'totalSpent' ? (
+            Solde
+            {sort.field === 'outstandingBalance' ? (
               sort.direction === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
             ) : (
               <ArrowUpDown className="h-3 w-3 opacity-40" />
             )}
           </button>
         ),
-        cell: ({ row }) => (
-          <span className="font-bold text-xs text-foreground tracking-tight">
-            {formatCurrency(row.original.totalSpent || 0)}
-          </span>
-        ),
+        cell: ({ row }) => {
+          const balance = row.original.outstandingBalance ?? 0;
+          return (
+            <span
+              className={cn(
+                'font-bold text-xs tracking-tight',
+                balance > 0
+                  ? 'text-rose-600 dark:text-rose-400 font-extrabold'
+                  : balance < 0
+                  ? 'text-emerald-600 dark:text-emerald-400'
+                  : 'text-muted-foreground'
+              )}
+            >
+              {formatCurrency(balance)}
+            </span>
+          );
+        },
         size: 115,
       },
       {

@@ -5,7 +5,9 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/pdf_invoice_service.dart';
+import '../../domain/entities/order.dart';
 import '../providers/order_details_provider.dart';
+import '../providers/orders_history_provider.dart';
 import '../widgets/order_header_card.dart';
 import '../widgets/client_information_card.dart';
 import '../widgets/order_timeline.dart';
@@ -14,14 +16,27 @@ import '../widgets/notes_card.dart';
 import '../widgets/quick_actions_card.dart';
 import '../widgets/ordered_products_card.dart';
 
-class OrderDetailsPage extends ConsumerWidget {
+class OrderDetailsPage extends ConsumerStatefulWidget {
   final String orderId;
 
   const OrderDetailsPage({super.key, required this.orderId});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final details = ref.watch(orderDetailsProvider(orderId));
+  ConsumerState<OrderDetailsPage> createState() => _OrderDetailsPageState();
+}
+
+class _OrderDetailsPageState extends ConsumerState<OrderDetailsPage> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(ordersProvider.notifier).refreshOrder(widget.orderId);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final details = ref.watch(orderDetailsProvider(widget.orderId));
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: const SystemUiOverlayStyle(
@@ -35,11 +50,18 @@ class OrderDetailsPage extends ConsumerWidget {
         body: SafeArea(
           top: true,
           bottom: false,
-          child: CustomScrollView(
-            physics: const BouncingScrollPhysics(
-              parent: AlwaysScrollableScrollPhysics(),
-            ),
-            slivers: [
+          child: RefreshIndicator(
+            color: AppColors.primary,
+            backgroundColor: AppColors.surface,
+            onRefresh: () async {
+              await ref.read(ordersProvider.notifier).refreshOrder(widget.orderId);
+              await ref.read(ordersProvider.notifier).loadOrders(isRefresh: true);
+            },
+            child: CustomScrollView(
+              physics: const BouncingScrollPhysics(
+                parent: AlwaysScrollableScrollPhysics(),
+              ),
+              slivers: [
                     // Header with back button and PDF action
                     SliverToBoxAdapter(
                       child: Padding(
@@ -173,12 +195,12 @@ class OrderDetailsPage extends ConsumerWidget {
                     const SliverToBoxAdapter(child: SizedBox(height: 16)),
 
                     // Rejection reason if rejected
-                    if (details.rejectionReason != null)
+                    if (details.order.status == OrderStatus.rejected || details.rejectionReason != null)
                       SliverToBoxAdapter(
                         child: _RejectionBanner(
-                            reason: details.rejectionReason!),
+                            reason: details.rejectionReason ?? 'Commande rejetée par l\'administration.'),
                       ),
-                    if (details.rejectionReason != null)
+                    if (details.order.status == OrderStatus.rejected || details.rejectionReason != null)
                       const SliverToBoxAdapter(child: SizedBox(height: 16)),
 
                     // Client information card
@@ -229,6 +251,7 @@ class OrderDetailsPage extends ConsumerWidget {
                     ),
                   ],
                 ),
+            ),
         ),
       ),
     );
@@ -245,35 +268,48 @@ class _RejectionBanner extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Container(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: AppColors.dangerLight,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppColors.danger.withAlpha(60)),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.danger.withAlpha(50)),
         ),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Icon(Icons.info_outline_rounded,
-                color: AppColors.danger, size: 20),
-            const SizedBox(width: 12),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.danger.withAlpha(20),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.block_flipped,
+                color: AppColors.danger,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'Commande rejetée',
+                    'Commande Rejetée',
                     style: TextStyle(
-                      fontSize: 13.5,
+                      fontSize: 14,
                       fontWeight: FontWeight.w700,
                       color: AppColors.danger,
                     ),
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 4),
                   Text(
-                    reason,
+                    reason.toLowerCase().startsWith('motif') ? reason : 'Motif : $reason',
                     style: TextStyle(
-                      fontSize: 12,
-                      color: AppColors.danger.withAlpha(200),
+                      fontSize: 13,
+                      height: 1.35,
+                      fontWeight: FontWeight.w500,
+                      color: AppColors.danger.withAlpha(220),
                     ),
                   ),
                 ],

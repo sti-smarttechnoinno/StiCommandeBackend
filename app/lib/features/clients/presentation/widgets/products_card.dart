@@ -88,17 +88,46 @@ class ProductsCard extends ConsumerWidget {
           ),
           const SizedBox(height: AppConstants.md),
           if (details.frequentProducts.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 16),
-              child: Center(
-                child: Text(
-                  'Aucun produit acheté pour le moment.',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: AppColors.textTertiary,
-                    fontStyle: FontStyle.italic,
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+              alignment: Alignment.center,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: AppColors.background,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: AppColors.border.withAlpha(50)),
+                    ),
+                    child: const Icon(
+                      Icons.inventory_2_outlined,
+                      size: 20,
+                      color: AppColors.textTertiary,
+                    ),
                   ),
-                ),
+                  const SizedBox(height: 10),
+                  const Text(
+                    'Aucun produit commandé pour le moment',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Les articles achetés par ce client apparaîtront ici automatiquement.',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: AppColors.textTertiary,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
               ),
             )
           else
@@ -128,6 +157,12 @@ class _ProductRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final opTag = product.operator.isNotEmpty
+        ? (product.operator.length >= 2
+            ? product.operator.substring(0, 2).toUpperCase()
+            : product.operator.toUpperCase())
+        : 'PR';
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: AppConstants.md),
       child: Row(
@@ -142,7 +177,7 @@ class _ProductRow extends StatelessWidget {
             ),
             child: Center(
               child: Text(
-                product.operator.substring(0, 2).toUpperCase(),
+                opTag,
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,

@@ -72,13 +72,13 @@ export function RevenueChart() {
       <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4">
         <div>
           <div className="flex items-center gap-2">
-            <CardTitle className="text-base font-bold tracking-tight">Revenue Overview</CardTitle>
+            <CardTitle className="text-base font-bold tracking-tight">Aperçu des revenus</CardTitle>
             <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded-full">
               <TrendingUp className="h-3 w-3" /> +24%
             </span>
           </div>
           <CardDescription className="text-xs text-muted-foreground mt-0.5">
-            Financial performance for the last {dateRange} days
+            Performance financière des {dateRange} derniers jours
           </CardDescription>
         </div>
 
@@ -95,7 +95,7 @@ export function RevenueChart() {
               }`}
               onClick={() => setDateRange(range)}
             >
-              {range === '365' ? '1 Year' : `${range}D`}
+              {range === '365' ? '1 an' : `${range} j`}
             </Button>
           ))}
         </div>
@@ -139,7 +139,7 @@ export function RevenueChart() {
             <Area
               type="monotone"
               dataKey="revenue"
-              name="Revenue (DA)"
+              name="Revenus (DA)"
               stroke="#D71920"
               strokeWidth={2.5}
               fill="url(#revenueGrad)"
@@ -147,7 +147,7 @@ export function RevenueChart() {
             <Area
               type="monotone"
               dataKey="orders"
-              name="Orders"
+              name="Commandes"
               stroke="#2563EB"
               strokeWidth={2}
               fill="url(#ordersGrad)"

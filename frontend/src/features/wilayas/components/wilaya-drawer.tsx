@@ -88,39 +88,62 @@ export function WilayaDrawer({ wilayaId, onClose }: WilayaDrawerProps) {
             <div className="flex-1 overflow-y-auto p-5 space-y-6">
               {/* Delegate Section */}
               <div>
-                <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">Assigned Delegate</h4>
-                {wilaya.delegate ? (
-                  <Card className="border border-border/40 shadow-xs rounded-xl">
-                    <CardContent className="p-4">
-                      <div className="flex items-center gap-3">
-                        <Avatar className="h-12 w-12 rounded-full">
-                          <AvatarFallback className="text-sm font-bold bg-primary/10 text-primary rounded-full">
-                            {wilaya.delegate.avatar}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-bold text-foreground">{wilaya.delegate.name}</p>
-                          <p className="text-xs text-muted-foreground">{wilaya.delegate.role}</p>
-                          <div className="flex items-center gap-3 mt-1">
-                            <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                              <Phone className="h-3 w-3" /> {wilaya.delegate.phone}
-                            </span>
-                          </div>
-                          <span className="flex items-center gap-1 text-[10px] text-muted-foreground mt-0.5">
-                            <Mail className="h-3 w-3" /> {wilaya.delegate.email}
-                          </span>
-                        </div>
-                        <div className={cn('w-3 h-3 rounded-full flex-shrink-0', wilaya.delegate.isOnline ? 'bg-emerald-500' : 'bg-slate-300')} />
-                      </div>
-                    </CardContent>
-                  </Card>
-                ) : (
-                  <Card className="border border-dashed border-border/60 shadow-none rounded-xl">
-                    <CardContent className="p-4 text-center">
-                      <p className="text-xs text-muted-foreground">No delegate assigned</p>
-                    </CardContent>
-                  </Card>
-                )}
+                <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">Assigned Delegate(s)</h4>
+                {(() => {
+                  const delegates = (wilaya.delegates && wilaya.delegates.length > 0)
+                    ? wilaya.delegates
+                    : (wilaya.delegate ? [wilaya.delegate] : []);
+
+                  if (delegates.length === 0) {
+                    return (
+                      <Card className="border border-dashed border-border/60 shadow-none rounded-xl">
+                        <CardContent className="p-4 text-center">
+                          <p className="text-xs text-muted-foreground">No delegate assigned</p>
+                        </CardContent>
+                      </Card>
+                    );
+                  }
+
+                  return (
+                    <div className="space-y-2.5">
+                      {delegates.map((del, idx) => (
+                        <Card key={del.id || idx} className="border border-border/40 shadow-xs rounded-xl">
+                          <CardContent className="p-4">
+                            <div className="flex items-center gap-3">
+                              <Avatar className="h-12 w-12 rounded-full">
+                                <AvatarFallback className="text-sm font-bold bg-primary/10 text-primary rounded-full">
+                                  {del.avatar}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <p className="text-sm font-bold text-foreground truncate">{del.name}</p>
+                                  {del.region && (
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-medium border border-border/40 shrink-0">
+                                      {del.region}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-xs text-muted-foreground">{del.role}</p>
+                                <div className="flex items-center gap-3 mt-1">
+                                  <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                                    <Phone className="h-3 w-3" /> {del.phone}
+                                  </span>
+                                </div>
+                                {del.email && (
+                                  <span className="flex items-center gap-1 text-[10px] text-muted-foreground mt-0.5">
+                                    <Mail className="h-3 w-3" /> {del.email}
+                                  </span>
+                                )}
+                              </div>
+                              <div className={cn('w-3 h-3 rounded-full flex-shrink-0', del.isOnline ? 'bg-emerald-500' : 'bg-slate-300')} />
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* KPI Grid */}

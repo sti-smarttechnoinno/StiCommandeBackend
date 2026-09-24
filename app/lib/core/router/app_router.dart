@@ -12,6 +12,10 @@ import '../../features/products/presentation/pages/products_page.dart';
 import '../../features/profile/presentation/pages/profile_page.dart';
 import '../../features/notifications/presentation/pages/notifications_page.dart';
 import '../../features/orders/presentation/widgets/ordered_products_card.dart';
+import '../../features/chat/domain/models/chat_models.dart';
+import '../../features/chat/presentation/pages/chat_inbox_page.dart';
+import '../../features/chat/presentation/pages/chat_conversation_page.dart';
+import '../../features/tasks/presentation/pages/tasks_page.dart';
 import 'main_scaffold.dart';
 
 final rootNavigatorKey = GlobalKey<NavigatorState>();
@@ -115,6 +119,25 @@ final appRouter = GoRouter(
       path: '/notifications',
       name: 'notifications',
       builder: (context, state) => const NotificationsPage(),
+    ),
+    GoRoute(
+      path: '/chat',
+      name: 'chat',
+      builder: (context, state) => const ChatInboxPage(),
+    ),
+    GoRoute(
+      path: '/chat/:userId',
+      name: 'chat-conversation',
+      builder: (context, state) {
+        final userId = int.tryParse(state.pathParameters['userId'] ?? '0') ?? 0;
+        final contact = state.extra as ChatContact?;
+        return ChatConversationPage(userId: userId, initialContact: contact);
+      },
+    ),
+    GoRoute(
+      path: '/tasks',
+      name: 'tasks',
+      builder: (context, state) => const TasksPage(),
     ),
   ],
 );

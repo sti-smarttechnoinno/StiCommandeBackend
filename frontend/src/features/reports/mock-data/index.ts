@@ -9,6 +9,7 @@ import type {
   BestProduct,
   OrdersByStatus,
 } from '../types';
+import { reportsService } from '@/services/reports';
 
 export const MOCK_REVENUE_DATA: Record<string, RevenueDataPoint[]> = {
   '7d': [
@@ -64,16 +65,30 @@ export const MOCK_SALES_TREND: SalesTrendPoint[] = [
   { month: 'Dec', sales: 4800000, returns: 105000 },
 ];
 
-export const MOCK_BEST_PRODUCTS: BestProduct[] = [
-  { id: '1', name: 'Ooredoo 1000 DA Recharge', revenue: 3200000, quantitySold: 8500, trend: 18.2, category: 'Mobile Credit' },
-  { id: '2', name: 'Djezzy SIM Starter Pack', revenue: 2800000, quantitySold: 4200, trend: 12.5, category: 'SIM Card' },
-  { id: '3', name: 'Mobilis 500 DA Recharge', revenue: 2100000, quantitySold: 7200, trend: 8.7, category: 'Mobile Credit' },
-  { id: '4', name: 'Huawei Y6 Pro 2024', revenue: 1950000, quantitySold: 340, trend: 22.1, category: 'Device' },
-  { id: '5', name: 'Samsung Galaxy A15', revenue: 1800000, quantitySold: 290, trend: 15.3, category: 'Device' },
-  { id: '6', name: 'Ooredoo 2000 DA Recharge', revenue: 1650000, quantitySold: 3800, trend: 9.4, category: 'Mobile Credit' },
-  { id: '7', name: 'Orange SIM Starter Pack', revenue: 1420000, quantitySold: 3100, trend: 6.8, category: 'SIM Card' },
-  { id: '8', name: 'Djezzy 1500 DA Recharge', revenue: 1280000, quantitySold: 4100, trend: 11.2, category: 'Mobile Credit' },
-];
+/**
+ * Dynamic fetcher for best selling products directly from the API.
+ */
+export async function getDynamicBestProducts(): Promise<BestProduct[]> {
+  try {
+    const products = await reportsService.getBestProducts();
+    return products.map((p) => ({
+      id: p.id,
+      name: p.name,
+      revenue: p.sales,
+      quantitySold: p.units,
+      trend: p.share ?? 0,
+      category: p.category,
+    }));
+  } catch (error) {
+    console.error('Failed to fetch dynamic best products:', error);
+    return [];
+  }
+}
+
+/**
+ * Dynamic mock placeholder - products are loaded dynamically from the database.
+ */
+export const MOCK_BEST_PRODUCTS: BestProduct[] = [];
 
 export const MOCK_ORDERS_BY_STATUS: OrdersByStatus[] = [
   { name: 'Pending', value: 342, color: '#F59E0B' },

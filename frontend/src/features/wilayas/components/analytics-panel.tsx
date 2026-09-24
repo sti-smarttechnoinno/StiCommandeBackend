@@ -7,7 +7,18 @@ import { formatCurrency, formatCompactCurrency } from '../utils';
 import { wilayasService, type WilayasAnalyticsResponse } from '@/services/wilayas';
 import { PieChart, Trophy, MapPin, Loader2 } from 'lucide-react';
 
-const REGIONAL_COLORS = ['#2563EB', '#22C55E', '#8B5CF6', '#F59E0B', '#EF4444', '#6B7280'];
+const REGIONAL_COLORS = [
+  '#2563EB', // Blue
+  '#10B981', // Emerald
+  '#F59E0B', // Amber
+  '#8B5CF6', // Purple
+  '#EC4899', // Pink
+  '#06B6D4', // Cyan
+  '#EF4444', // Red
+  '#F97316', // Orange
+  '#14B8A6', // Teal
+  '#6366F1', // Indigo
+];
 
 const PERFORMANCE_CONFIG = {
   excellent: { label: 'Excellent', color: 'bg-emerald-500', textColor: 'text-emerald-600 dark:text-emerald-400', bgColor: 'bg-emerald-500/10 border-emerald-500/20' },
@@ -17,10 +28,23 @@ const PERFORMANCE_CONFIG = {
 };
 
 function DonutChart({ data }: { data: WilayasAnalyticsResponse['regionalDistribution'] }) {
-  const regionalWithColors = data.map((r, i) => ({
-    ...r,
-    color: r.color || REGIONAL_COLORS[i % REGIONAL_COLORS.length],
-  }));
+  const usedColors = new Set<string>();
+  const regionalWithColors = data.map((r, i) => {
+    let color = r.color?.trim();
+    if (!color || usedColors.has(color.toLowerCase())) {
+      color = REGIONAL_COLORS[i % REGIONAL_COLORS.length];
+    }
+    if (usedColors.has(color.toLowerCase())) {
+      const nextUnused = REGIONAL_COLORS.find((c) => !usedColors.has(c.toLowerCase()));
+      if (nextUnused) color = nextUnused;
+    }
+    usedColors.add(color.toLowerCase());
+
+    return {
+      ...r,
+      color,
+    };
+  });
   const totalRevenue = regionalWithColors.reduce((s, r) => s + r.revenue, 0);
   let cumulativePercent = 0;
 

@@ -64,24 +64,62 @@ const WilayaCard = memo(function WilayaCard({ wilaya, onOpen }: { wilaya: Wilaya
           </div>
 
           {/* Delegate Row */}
-          {wilaya.delegate ? (
-            <div className="flex items-center gap-2 p-1.5 rounded-lg bg-muted/40 border border-border/30">
-              <Avatar className="h-6 w-6 rounded-full flex-shrink-0">
-                <AvatarFallback className="text-[10px] font-bold bg-primary/10 text-primary">
-                  {wilaya.delegate.avatar}
-                </AvatarFallback>
-              </Avatar>
-              <div className="flex-1 min-w-0">
-                <p className="text-[11px] font-semibold text-foreground truncate leading-tight">{wilaya.delegate.name}</p>
+          {(() => {
+            const delegates = (wilaya.delegates && wilaya.delegates.length > 0)
+              ? wilaya.delegates
+              : (wilaya.delegate ? [wilaya.delegate] : []);
+
+            if (delegates.length === 0) {
+              return (
+                <div className="flex items-center gap-2 p-1.5 rounded-lg bg-muted/30 border border-dashed border-border/50 text-[11px] text-muted-foreground">
+                  <UserPlus className="h-3.5 w-3.5 text-muted-foreground/70" />
+                  <span className="truncate">Unassigned Delegate</span>
+                </div>
+              );
+            }
+
+            if (delegates.length === 1) {
+              const del = delegates[0];
+              return (
+                <div className="flex items-center gap-2 p-1.5 rounded-lg bg-muted/40 border border-border/30">
+                  <Avatar className="h-6 w-6 rounded-full flex-shrink-0">
+                    <AvatarFallback className="text-[10px] font-bold bg-primary/10 text-primary">
+                      {del.avatar}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[11px] font-semibold text-foreground truncate leading-tight">{del.name}</p>
+                  </div>
+                  <div className={cn('w-2 h-2 rounded-full flex-shrink-0', del.isOnline ? 'bg-emerald-500' : 'bg-slate-300')} />
+                </div>
+              );
+            }
+
+            return (
+              <div className="space-y-1">
+                {delegates.map((del, idx) => (
+                  <div key={del.id || idx} className="flex items-center gap-2 p-1.5 rounded-lg bg-muted/40 border border-border/30">
+                    <Avatar className="h-5 w-5 rounded-full flex-shrink-0">
+                      <AvatarFallback className="text-[9px] font-bold bg-primary/10 text-primary">
+                        {del.avatar}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-[11px] font-semibold text-foreground truncate leading-tight">{del.name}</p>
+                        {del.region && (
+                          <span className="text-[9px] px-1 rounded bg-background/90 text-muted-foreground border border-border/40 shrink-0">
+                            {del.region}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className={cn('w-2 h-2 rounded-full flex-shrink-0', del.isOnline ? 'bg-emerald-500' : 'bg-slate-300')} />
+                  </div>
+                ))}
               </div>
-              <div className={cn('w-2 h-2 rounded-full flex-shrink-0', wilaya.delegate.isOnline ? 'bg-emerald-500' : 'bg-slate-300')} />
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 p-1.5 rounded-lg bg-muted/30 border border-dashed border-border/50 text-[11px] text-muted-foreground">
-              <UserPlus className="h-3.5 w-3.5 text-muted-foreground/70" />
-              <span className="truncate">Unassigned Delegate</span>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Compact 2x2 ERP Metrics Grid */}
           <div className="grid grid-cols-2 gap-1.5">

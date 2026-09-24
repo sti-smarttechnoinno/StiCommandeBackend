@@ -65,13 +65,15 @@ class FinancialSummaryCard extends StatelessWidget {
                   label: 'Crédit dispo.',
                   value: _format(client.availableCredit),
                   color: AppColors.success,
+                  icon: Icons.account_balance_wallet_rounded,
                 ),
               ),
               Expanded(
                 child: _FinanceColumn(
-                  label: 'Solde dû',
+                  label: 'Solde impayé',
                   value: _format(client.outstandingBalance),
-                  color: client.outstandingBalance > 0 ? AppColors.danger : AppColors.success,
+                  color: client.outstandingBalance > 0 ? const Color(0xFFE11D48) : AppColors.success,
+                  icon: Icons.receipt_long_rounded,
                 ),
               ),
               Expanded(
@@ -79,38 +81,124 @@ class FinancialSummaryCard extends StatelessWidget {
                   label: 'Limite crédit',
                   value: _format(client.creditLimit),
                   color: AppColors.info,
+                  icon: Icons.credit_card_rounded,
                 ),
               ),
             ],
           ),
 
-          if (client.outstandingBalance > 0) ...[
-            const SizedBox(height: 10),
+          const SizedBox(height: 12),
+
+          // Solde non payé (Impayé) detailed callout
+          if (client.outstandingBalance > 0)
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: const Color(0xFFFFF1F2),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFFFECDD3), width: 0.8),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFFECDD3), width: 1),
               ),
-              child: Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.warning_amber_rounded, size: 15, color: Color(0xFFE11D48)),
-                  const SizedBox(width: 7),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFE11D48),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.priority_high_rounded,
+                              size: 12,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'Solde Non Payé (Créance)',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF9F1239),
+                            ),
+                          ),
+                        ],
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE11D48).withAlpha(20),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Text(
+                          'Impayé',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFFE11D48),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: [
+                      const Text(
+                        'Total restant dû :',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: Color(0xFF881337),
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      Text(
+                        _formatAmount(client.outstandingBalance),
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFFE11D48),
+                          fontFamily: 'monospace',
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            )
+          else
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppColors.success.withAlpha(12),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppColors.success.withAlpha(40), width: 1),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.check_circle_rounded, size: 16, color: AppColors.success),
+                  SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Créance en cours : ${_format(client.outstandingBalance)} restant dû',
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF9F1239),
+                      'Situation à jour : Aucun solde impayé',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.success,
                       ),
                     ),
                   ),
                 ],
               ),
             ),
-          ],
 
           const SizedBox(height: 12),
 
@@ -194,7 +282,7 @@ class FinancialSummaryCard extends StatelessWidget {
                         ),
                         const SizedBox(width: 8),
                         const Text(
-                          'Dernier Règlement',
+                          'Dernier Encaissement',
                           style: TextStyle(
                             fontSize: 12.5,
                             fontWeight: FontWeight.w700,
@@ -223,14 +311,14 @@ class FinancialSummaryCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 10),
 
-                if (client.lastPaymentAmount != null && client.lastPaymentAmount! > 0) ...[
+                if ((client.lastPaymentAmount != null && client.lastPaymentAmount! > 0) || client.lastPaymentDate != null) ...[
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     crossAxisAlignment: CrossAxisAlignment.baseline,
                     textBaseline: TextBaseline.alphabetic,
                     children: [
                       const Text(
-                        'Montant payé',
+                        'Montant encaissé',
                         style: TextStyle(
                           fontSize: 11.5,
                           color: AppColors.textSecondary,
@@ -238,7 +326,7 @@ class FinancialSummaryCard extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        _formatAmount(client.lastPaymentAmount!),
+                        _formatAmount(client.lastPaymentAmount ?? 0),
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w800,
@@ -290,15 +378,41 @@ class FinancialSummaryCard extends StatelessWidget {
                     ],
                   ),
 
-                  if (client.lastPaymentReference != null && client.lastPaymentReference!.isNotEmpty) ...[
-                    const SizedBox(height: 5),
-                    Text(
-                      'Réf: ${client.lastPaymentReference}',
-                      style: const TextStyle(
-                        fontSize: 10,
-                        color: AppColors.textTertiary,
-                        fontStyle: FontStyle.italic,
-                      ),
+                  if ((client.lastPaymentReference != null && client.lastPaymentReference!.isNotEmpty) ||
+                      (client.lastPaymentOrderNumber != null && client.lastPaymentOrderNumber!.isNotEmpty) ||
+                      (client.lastPaymentAccount != null && client.lastPaymentAccount!.isNotEmpty)) ...[
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: [
+                        if (client.lastPaymentOrderNumber != null && client.lastPaymentOrderNumber!.isNotEmpty)
+                          Text(
+                            'N° #${client.lastPaymentOrderNumber}',
+                            style: const TextStyle(
+                              fontSize: 10,
+                              color: AppColors.textTertiary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        if (client.lastPaymentAccount != null && client.lastPaymentAccount!.isNotEmpty)
+                          Text(
+                            'Compte: ${client.lastPaymentAccount}',
+                            style: const TextStyle(
+                              fontSize: 10,
+                              color: AppColors.textTertiary,
+                            ),
+                          ),
+                        if (client.lastPaymentReference != null && client.lastPaymentReference!.isNotEmpty)
+                          Text(
+                            'Réf: ${client.lastPaymentReference}',
+                            style: const TextStyle(
+                              fontSize: 10,
+                              color: AppColors.textTertiary,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                      ],
                     ),
                   ],
                 ] else ...[
@@ -374,11 +488,13 @@ class _FinanceColumn extends StatelessWidget {
   final String label;
   final String value;
   final Color color;
+  final IconData icon;
 
   const _FinanceColumn({
     required this.label,
     required this.value,
     required this.color,
+    required this.icon,
   });
 
   @override
@@ -389,26 +505,27 @@ class _FinanceColumn extends StatelessWidget {
           width: 44,
           height: 44,
           decoration: BoxDecoration(
-            color: color.withAlpha(20),
+            color: color.withAlpha(22),
             shape: BoxShape.circle,
           ),
           child: Center(
-            child: Text(
-              '${value.substring(0, 1)}M',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: color,
-              ),
+            child: Icon(
+              icon,
+              size: 20,
+              color: color,
             ),
           ),
         ),
         const SizedBox(height: 8),
-        Text(
-          value,
-          style: AppTypography.headlineSmall.copyWith(
-            fontWeight: FontWeight.w700,
-            color: AppColors.textPrimary,
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            value,
+            style: AppTypography.headlineSmall.copyWith(
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+              fontSize: 15,
+            ),
           ),
         ),
         const SizedBox(height: 2),

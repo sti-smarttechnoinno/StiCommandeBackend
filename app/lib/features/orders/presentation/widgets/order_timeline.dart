@@ -66,7 +66,34 @@ class OrderTimeline extends StatelessWidget {
                     alignment: WrapAlignment.end,
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      if (order!.isVirtualOnly)
+                      if (order!.status == OrderStatus.rejected)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: AppColors.danger.withAlpha(20),
+                            borderRadius: BorderRadius.circular(20),
+                            border:
+                                Border.all(color: AppColors.danger.withAlpha(80)),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.cancel_outlined,
+                                  size: 11, color: AppColors.danger),
+                              SizedBox(width: 2.5),
+                              Text(
+                                'Rejetée',
+                                style: TextStyle(
+                                  fontSize: 9.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.danger,
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      else if (order!.isVirtualOnly)
                         Container(
                           padding: const EdgeInsets.symmetric(
                               horizontal: 6, vertical: 2),
@@ -154,8 +181,10 @@ class OrderTimeline extends StatelessWidget {
                   : null;
               final isLastConnector =
                   nextStep == null || nextStep.status == TimelineStepStatus.upcoming;
+              final isRejectedConnector = nextStep?.status == TimelineStepStatus.rejected;
               return _TimelineConnector(
                 isActive: step.status == TimelineStepStatus.completed,
+                isRejected: isRejectedConnector,
                 isLast: isLastConnector,
               );
             }
@@ -173,9 +202,14 @@ class OrderTimeline extends StatelessWidget {
 
 class _TimelineConnector extends StatelessWidget {
   final bool isActive;
+  final bool isRejected;
   final bool isLast;
 
-  const _TimelineConnector({required this.isActive, required this.isLast});
+  const _TimelineConnector({
+    required this.isActive,
+    this.isRejected = false,
+    required this.isLast,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -187,7 +221,9 @@ class _TimelineConnector extends StatelessWidget {
             child: Container(
               width: 2,
               height: isLast ? 14 : 20,
-              color: isActive ? AppColors.success : AppColors.border.withAlpha(80),
+              color: isRejected
+                  ? AppColors.danger
+                  : (isActive ? AppColors.success : AppColors.border.withAlpha(80)),
             ),
           ),
         ),
@@ -207,6 +243,7 @@ class _TimelineStepWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     final isCompleted = step.status == TimelineStepStatus.completed;
     final isCurrent = step.status == TimelineStepStatus.current;
+    final isRejected = step.status == TimelineStepStatus.rejected;
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -217,34 +254,40 @@ class _TimelineStepWidget extends StatelessWidget {
           height: 18,
           margin: const EdgeInsets.only(top: 2),
           decoration: BoxDecoration(
-            color: isCompleted
-                ? AppColors.success
-                : isCurrent
-                    ? AppColors.primary
-                    : AppColors.surface,
+            color: isRejected
+                ? AppColors.danger
+                : isCompleted
+                    ? AppColors.success
+                    : isCurrent
+                        ? AppColors.primary
+                        : AppColors.surface,
             shape: BoxShape.circle,
             border: Border.all(
-              color: isCompleted
-                  ? AppColors.success
-                  : isCurrent
-                      ? AppColors.primary
-                      : AppColors.border,
+              color: isRejected
+                  ? AppColors.danger
+                  : isCompleted
+                      ? AppColors.success
+                      : isCurrent
+                          ? AppColors.primary
+                          : AppColors.border,
               width: 1.8,
             ),
           ),
-          child: isCompleted
-              ? const Icon(Icons.check_rounded, color: Colors.white, size: 10)
-              : isCurrent
-                  ? Container(
-                      width: 6,
-                      height: 6,
-                      margin: const EdgeInsets.all(4),
-                      decoration: const BoxDecoration(
-                        color: Colors.white,
-                        shape: BoxShape.circle,
-                      ),
-                    )
-                  : null,
+          child: isRejected
+              ? const Icon(Icons.close_rounded, color: Colors.white, size: 10)
+              : isCompleted
+                  ? const Icon(Icons.check_rounded, color: Colors.white, size: 10)
+                  : isCurrent
+                      ? Container(
+                          width: 6,
+                          height: 6,
+                          margin: const EdgeInsets.all(4),
+                          decoration: const BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                          ),
+                        )
+                      : null,
         ),
 
         const SizedBox(width: 10),
@@ -254,15 +297,19 @@ class _TimelineStepWidget extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
-              color: isCurrent
-                  ? AppColors.primary.withAlpha(10)
-                  : isCompleted
-                      ? AppColors.successLight.withAlpha(40)
-                      : Colors.transparent,
+              color: isRejected
+                  ? AppColors.dangerLight
+                  : isCurrent
+                      ? AppColors.primary.withAlpha(10)
+                      : isCompleted
+                          ? AppColors.successLight.withAlpha(40)
+                          : Colors.transparent,
               borderRadius: BorderRadius.circular(10),
-              border: isCurrent
-                  ? Border.all(color: AppColors.primary.withAlpha(30))
-                  : null,
+              border: isRejected
+                  ? Border.all(color: AppColors.danger.withAlpha(50))
+                  : isCurrent
+                      ? Border.all(color: AppColors.primary.withAlpha(30))
+                      : null,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -271,10 +318,12 @@ class _TimelineStepWidget extends StatelessWidget {
                   step.title,
                   style: TextStyle(
                     fontSize: 12.5,
-                    fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w600,
-                    color: isCompleted || isCurrent
-                        ? AppColors.textPrimary
-                        : AppColors.textTertiary,
+                    fontWeight: isCurrent || isRejected ? FontWeight.w700 : FontWeight.w600,
+                    color: isRejected
+                        ? AppColors.danger
+                        : (isCompleted || isCurrent
+                            ? AppColors.textPrimary
+                            : AppColors.textTertiary),
                   ),
                 ),
                 if (step.description != null && step.description!.isNotEmpty) ...[
@@ -283,9 +332,11 @@ class _TimelineStepWidget extends StatelessWidget {
                     step.description!,
                     style: TextStyle(
                       fontSize: 10.5,
-                      color: isCompleted || isCurrent
-                          ? AppColors.textSecondary
-                          : AppColors.textTertiary,
+                      color: isRejected
+                          ? AppColors.danger.withAlpha(220)
+                          : (isCompleted || isCurrent
+                              ? AppColors.textSecondary
+                              : AppColors.textTertiary),
                       fontWeight: FontWeight.w400,
                     ),
                   ),

@@ -27,36 +27,42 @@ import type { Order, OrderStatus } from '@/types';
 import { Search, Download, Calendar, RefreshCw, Eye, Pencil, Check, X, Printer, ChevronLeft, ChevronRight, ShoppingBag } from 'lucide-react';
 import { useDebounce } from '@/hooks/use-debounce';
 import { format } from 'date-fns';
+import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 
 const STATUS_CONFIG: Record<OrderStatus, { label: string; style: string; dot: string }> = {
   pending: {
-    label: 'Pending',
+    label: 'En attente',
     style: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
     dot: 'bg-amber-500',
   },
   validated: {
-    label: 'Validated',
+    label: 'Validée',
     style: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
     dot: 'bg-emerald-500',
   },
+  partially_validated: {
+    label: 'Partiellement validée',
+    style: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
+    dot: 'bg-amber-500',
+  },
   preparing: {
-    label: 'Preparing',
+    label: 'En préparation',
     style: 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
     dot: 'bg-blue-500',
   },
   delivered: {
-    label: 'Delivered',
+    label: 'Livrée',
     style: 'bg-purple-500/10 text-purple-600 dark:text-purple-400',
     dot: 'bg-purple-500',
   },
   rejected: {
-    label: 'Rejected',
+    label: 'Rejetée',
     style: 'bg-rose-500/10 text-rose-600 dark:text-rose-400',
     dot: 'bg-rose-500',
   },
   cancelled: {
-    label: 'Cancelled',
+    label: 'Annulée',
     style: 'bg-slate-500/10 text-slate-600 dark:text-slate-400',
     dot: 'bg-slate-400',
   },
@@ -96,13 +102,13 @@ export function OrdersTable() {
     () => [
       {
         accessorKey: 'order_code',
-        header: 'Order ID',
+        header: 'N° Commande',
         cell: ({ row }) => (
           <button
             type="button"
             onClick={() => router.push(`/orders/${row.original.id}`)}
             className="font-semibold font-mono text-xs text-primary bg-primary/10 hover:bg-primary/20 px-2 py-0.5 rounded tracking-wider transition-colors cursor-pointer"
-            title="View order"
+            title="Voir la commande"
           >
             {row.original.order_code}
           </button>
@@ -124,16 +130,16 @@ export function OrdersTable() {
       },
       {
         accessorKey: 'delegate_name',
-        header: 'Delegate',
+        header: 'Délégué',
         cell: ({ row }) => (
           <span className="text-xs font-medium text-foreground">
-            {row.original.delegate_name || 'Unassigned'}
+            {row.original.delegate_name || 'Non assigné'}
           </span>
         ),
       },
       {
         accessorKey: 'region',
-        header: 'Region',
+        header: 'Région',
         cell: ({ row }) => (
           <span className="text-xs text-muted-foreground font-medium bg-muted/50 px-2 py-0.5 rounded">
             {row.original.region}
@@ -142,25 +148,28 @@ export function OrdersTable() {
       },
       {
         accessorKey: 'items',
-        header: 'Items',
-        cell: ({ row }) => (
-          <span className="text-xs text-muted-foreground">
-            {row.original.items ? row.original.items.length : 1} {row.original.items && row.original.items.length === 1 ? 'item' : 'items'}
-          </span>
-        ),
+        header: 'Articles',
+        cell: ({ row }) => {
+          const count = row.original.items ? row.original.items.length : 1;
+          return (
+            <span className="text-xs text-muted-foreground">
+              {count} {count > 1 ? 'articles' : 'article'}
+            </span>
+          );
+        },
       },
       {
         accessorKey: 'total_amount',
-        header: 'Total Amount',
+        header: 'Montant total',
         cell: ({ row }) => (
           <span className="font-bold text-xs text-foreground tracking-tight">
-            {new Intl.NumberFormat('en-US').format(row.original.total_amount)} DA
+            {new Intl.NumberFormat('fr-FR').format(row.original.total_amount)} DA
           </span>
         ),
       },
       {
         accessorKey: 'status',
-        header: 'Status',
+        header: 'Statut',
         cell: ({ row }) => {
           const cfg = STATUS_CONFIG[row.original.status as keyof typeof STATUS_CONFIG] || STATUS_CONFIG.pending;
           return (
@@ -176,7 +185,7 @@ export function OrdersTable() {
         header: 'Date',
         cell: ({ row }) => (
           <span className="text-xs text-muted-foreground">
-            {row.original.created_at ? format(new Date(row.original.created_at), 'MMM dd, HH:mm') : '-'}
+            {row.original.created_at ? format(new Date(row.original.created_at), 'd MMM, HH:mm', { locale: fr }) : '-'}
           </span>
         ),
       },
@@ -190,7 +199,7 @@ export function OrdersTable() {
               size="icon"
               className="h-7 w-7 rounded-md text-muted-foreground hover:text-foreground"
               onClick={() => router.push(`/orders/${row.original.id}`)}
-              title="View order"
+              title="Voir la commande"
             >
               <Eye className="h-3.5 w-3.5" />
             </Button>
@@ -235,13 +244,13 @@ export function OrdersTable() {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <CardTitle className="text-base font-bold tracking-tight">Recent Orders</CardTitle>
+              <CardTitle className="text-base font-bold tracking-tight">Commandes récentes</CardTitle>
               <Badge variant="secondary" className="rounded-full text-xs font-semibold px-2 py-0.5">
-                {orders.length} Total
+                {orders.length} au total
               </Badge>
             </div>
             <CardDescription className="text-xs text-muted-foreground mt-0.5">
-              Live transaction log
+              Journal des transactions en direct
             </CardDescription>
           </div>
         </div>
@@ -251,7 +260,7 @@ export function OrdersTable() {
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
             <Input
-              placeholder="Search orders..."
+              placeholder="Rechercher des commandes..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-9 pr-3 w-44 sm:w-52 h-8 text-xs rounded-full bg-muted/50 border-none"
@@ -261,14 +270,14 @@ export function OrdersTable() {
             <Calendar className="h-3.5 w-3.5 text-muted-foreground" /> Date
           </Button>
           <Button variant="ghost" size="sm" className="h-8 px-3 rounded-full text-xs font-medium gap-1.5 bg-muted/40 hover:bg-muted/70">
-            <Download className="h-3.5 w-3.5 text-muted-foreground" /> Export
+            <Download className="h-3.5 w-3.5 text-muted-foreground" /> Exporter
           </Button>
           <Button
             variant="ghost"
             size="icon"
             onClick={handleRefresh}
             className="h-8 w-8 rounded-full bg-muted/40 hover:bg-muted/70"
-            title="Refresh table"
+            title="Actualiser le tableau"
           >
             <RefreshCw className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform duration-700", isRefreshing && "animate-spin")} />
           </Button>
@@ -310,7 +319,7 @@ export function OrdersTable() {
               ) : (
                 <TableRow>
                   <TableCell colSpan={columns.length} className="h-28 text-center text-muted-foreground text-xs">
-                    No orders matching your search.
+                    Aucune commande ne correspond à votre recherche.
                   </TableCell>
                 </TableRow>
               )}
@@ -321,18 +330,18 @@ export function OrdersTable() {
         {/* Footer Pagination */}
         <div className="flex items-center justify-between px-6 py-3.5 border-t border-border/30 text-xs">
           <span className="text-muted-foreground">
-            Showing{' '}
+            Affichage de{' '}
             <strong className="text-foreground font-semibold">
               {table.getState().pagination.pageIndex * table.getState().pagination.pageSize + 1}
             </strong>{' '}
-            to{' '}
+            à{' '}
             <strong className="text-foreground font-semibold">
               {Math.min(
                 (table.getState().pagination.pageIndex + 1) * table.getState().pagination.pageSize,
                 table.getFilteredRowModel().rows.length
               )}
             </strong>{' '}
-            of <strong className="text-foreground font-semibold">{table.getFilteredRowModel().rows.length}</strong> orders
+            sur <strong className="text-foreground font-semibold">{table.getFilteredRowModel().rows.length}</strong> commandes
           </span>
 
           <div className="flex items-center gap-1">
@@ -343,7 +352,7 @@ export function OrdersTable() {
               onClick={() => table.previousPage()}
               disabled={!table.getCanPreviousPage()}
             >
-              <ChevronLeft className="h-3.5 w-3.5" /> Previous
+              <ChevronLeft className="h-3.5 w-3.5" /> Précédent
             </Button>
 
             <div className="flex items-center gap-1 mx-1">
@@ -374,7 +383,7 @@ export function OrdersTable() {
               onClick={() => table.nextPage()}
               disabled={!table.getCanNextPage()}
             >
-              Next <ChevronRight className="h-3.5 w-3.5" />
+              Suivant <ChevronRight className="h-3.5 w-3.5" />
             </Button>
           </div>
         </div>

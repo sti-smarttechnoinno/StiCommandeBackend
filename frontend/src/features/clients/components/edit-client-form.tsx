@@ -26,6 +26,7 @@ import {
   WILAYAS_LIST,
   DELEGATES_LIST,
   getRegionForWilaya,
+  getRegionsForWilaya,
 } from '@/features/clients/components/create-client-form';
 import { formatCurrency } from '../utils';
 import {
@@ -44,6 +45,7 @@ import {
   Target,
   AlertCircle,
   Loader2,
+  Zap,
   Store,
   Building,
   Briefcase,
@@ -101,6 +103,8 @@ export function EditClientForm({ clientId }: EditClientFormProps) {
   const [clientType, setClientType] = useState<ClientData['clientType']>('retail');
   const [status, setStatus] = useState<ClientData['status']>('active');
   const [phone, setPhone] = useState('');
+  const [stormPhone, setStormPhone] = useState('');
+  const [rcNumber, setRcNumber] = useState('');
   const [email, setEmail] = useState('');
   const [wilaya, setWilaya] = useState('16 - Alger');
   const [region, setRegion] = useState('Algiers');
@@ -144,7 +148,9 @@ export function EditClientForm({ clientId }: EditClientFormProps) {
         setName(clientRes.name || '');
         setClientType(clientRes.clientType || 'retail');
         setStatus(clientRes.status || 'active');
-        setPhone(clientRes.phone || '');
+        setPhone(clientRes.personalPhone || clientRes.phone || '');
+        setStormPhone(clientRes.stormPhone || '');
+        setRcNumber(clientRes.rcNumber || '');
         setEmail(clientRes.email || '');
         setWilaya(clientRes.wilaya || '16 - Alger');
         setRegion(clientRes.region || 'Algiers');
@@ -173,21 +179,42 @@ export function EditClientForm({ clientId }: EditClientFormProps) {
     };
   }, [clientId]);
 
-  const handleWilayaChange = (selectedWilaya: string | null) => {
-    if (!selectedWilaya) return;
-    setWilaya(selectedWilaya);
-    const autoAssignedRegion = getRegionForWilaya(selectedWilaya, realRegions);
-    setRegion(autoAssignedRegion);
+  const candidateRegions = React.useMemo(() => {
+    return getRegionsForWilaya(wilaya, realRegions);
+  }, [wilaya, realRegions]);
 
-    // Auto-select sales delegate matching this region if available
-    const matchingDelegate = delegatesList.find(
-      (d) => d.region && autoAssignedRegion && d.region.trim().toLowerCase() === autoAssignedRegion.trim().toLowerCase()
+  const updateDelegateForRegion = (targetRegion: string, currentDelegates = delegatesList) => {
+    const matchingDelegate = currentDelegates.find(
+      (d) => d.region && targetRegion && d.region.trim().toLowerCase() === targetRegion.trim().toLowerCase()
     );
     if (matchingDelegate) {
       setDelegateId(matchingDelegate.id);
     } else {
       setDelegateId('unassigned');
     }
+  };
+
+  const handleWilayaChange = (selectedWilaya: string | null) => {
+    if (!selectedWilaya) return;
+    setWilaya(selectedWilaya);
+    const matches = getRegionsForWilaya(selectedWilaya, realRegions);
+    let chosenRegion = '';
+    if (matches.length > 0) {
+      if (matches.some((r) => r.name.toLowerCase() === region.toLowerCase())) {
+        chosenRegion = region;
+      } else {
+        chosenRegion = matches[0].name;
+      }
+    } else {
+      chosenRegion = getRegionForWilaya(selectedWilaya, realRegions);
+    }
+    setRegion(chosenRegion);
+    updateDelegateForRegion(chosenRegion);
+  };
+
+  const handleRegionChange = (chosenRegion: string) => {
+    setRegion(chosenRegion);
+    updateDelegateForRegion(chosenRegion);
   };
 
   const handleGenerateCode = async () => {
@@ -219,7 +246,9 @@ export function EditClientForm({ clientId }: EditClientFormProps) {
     setName(initialData.name || '');
     setClientType(initialData.clientType || 'retail');
     setStatus(initialData.status || 'active');
-    setPhone(initialData.phone || '');
+    setPhone(initialData.personalPhone || initialData.phone || '');
+    setStormPhone(initialData.stormPhone || '');
+    setRcNumber(initialData.rcNumber || '');
     setEmail(initialData.email || '');
     setWilaya(initialData.wilaya || '16 - Alger');
     setRegion(initialData.region || 'Algiers');
@@ -256,6 +285,12 @@ export function EditClientForm({ clientId }: EditClientFormProps) {
         clientType,
         status,
         phone: phone.trim(),
+        personal_phone: phone.trim(),
+        personalPhone: phone.trim(),
+        storm_phone: stormPhone.trim() || undefined,
+        stormPhone: stormPhone.trim() || undefined,
+        rc_number: rcNumber.trim() || null,
+        rcNumber: rcNumber.trim() || null,
         email: email.trim() || undefined,
         wilaya,
         region,
@@ -419,6 +454,20 @@ export function EditClientForm({ clientId }: EditClientFormProps) {
                     </p>
                   )}
                 </div>
+
+                {/* N° Registre de Commerce (RC) */}
+                <div className="space-y-2 sm:col-span-2">
+                  <label htmlFor="rcNumber" className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                    <FileText className="h-3.5 w-3.5 text-indigo-500" /> N° Registre de Commerce (RC) <span className="text-muted-foreground text-[10px] font-normal">(Identifiant légal - Optionnel)</span>
+                  </label>
+                  <Input
+                    id="rcNumber"
+                    value={rcNumber}
+                    onChange={(e) => setRcNumber(e.target.value)}
+                    placeholder="ex: 16/00-0123456B19"
+                    className="h-10 text-sm font-mono uppercase bg-background rounded-xl border-border/70 focus:border-indigo-500 focus:ring-indigo-500/20"
+                  />
+                </div>
               </div>
 
               {/* Client Type Selector Cards - Exact same card of type as clients/new */}
@@ -503,10 +552,10 @@ export function EditClientForm({ clientId }: EditClientFormProps) {
             </CardHeader>
             <CardContent className="p-6 space-y-6">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                {/* Phone */}
+                {/* Personal Phone */}
                 <div className="space-y-2">
                   <label htmlFor="phone" className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                    <Phone className="h-3.5 w-3.5 text-primary" /> Numéro de téléphone <span className="text-primary">*</span>
+                    <Phone className="h-3.5 w-3.5 text-primary" /> Numéro de téléphone personnel <span className="text-primary">*</span>
                   </label>
                   <Input
                     id="phone"
@@ -528,8 +577,22 @@ export function EditClientForm({ clientId }: EditClientFormProps) {
                   )}
                 </div>
 
-                {/* Email */}
+                {/* Storm Phone */}
                 <div className="space-y-2">
+                  <label htmlFor="stormPhone" className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                    <Zap className="h-3.5 w-3.5 text-rose-500" /> Numéro STORM (Ooredoo) <span className="text-muted-foreground text-[10px]">(Ligne Flexy - Optionnel)</span>
+                  </label>
+                  <Input
+                    id="stormPhone"
+                    value={stormPhone}
+                    onChange={(e) => setStormPhone(e.target.value)}
+                    placeholder="ex: 0557 99 88 77"
+                    className="h-10 text-sm bg-background rounded-xl border-border/70 focus:border-rose-500 focus:ring-rose-500/20 font-mono"
+                  />
+                </div>
+
+                {/* Email */}
+                <div className="space-y-2 sm:col-span-2">
                   <label htmlFor="email" className="text-xs font-semibold text-foreground flex items-center gap-1.5">
                     <Mail className="h-3.5 w-3.5 text-blue-500" /> Adresse email <span className="text-muted-foreground text-[10px]">(Optionnel)</span>
                   </label>
@@ -549,7 +612,7 @@ export function EditClientForm({ clientId }: EditClientFormProps) {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                 {/* Wilaya Picker */}
-                <div className="space-y-2">
+                <div className="space-y-2 sm:col-span-2">
                   <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
                     <MapPin className="h-3.5 w-3.5 text-amber-500" /> Wilaya <span className="text-primary">*</span>
                   </label>
@@ -567,18 +630,92 @@ export function EditClientForm({ clientId }: EditClientFormProps) {
                   </Select>
                 </div>
 
-                {/* Auto-detected Region Badge */}
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                    <Globe className="h-3.5 w-3.5 text-emerald-500" /> Région commerciale <span className="text-muted-foreground text-[10px]">(Auto-déduite)</span>
-                  </label>
-                  <div className="h-10 px-3.5 rounded-xl border border-border/60 bg-muted/30 flex items-center justify-between text-xs">
-                    <span className="font-bold text-foreground">Région {region}</span>
-                    <Badge variant="outline" className="rounded-full text-[10px] font-semibold border-emerald-500/30 text-emerald-600 bg-emerald-500/10">
-                      Automatique
+                {/* Multi-Region Association Selector */}
+                {candidateRegions.length > 1 && (
+                  <div className="sm:col-span-2 p-4 rounded-2xl bg-primary/5 border-2 border-primary/20 space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="flex h-2 w-2 rounded-full bg-primary animate-pulse" />
+                          <label className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                            <Globe className="h-3.5 w-3.5 text-primary" />
+                            Région Commerciale d&apos;Affectation <span className="text-primary">*</span>
+                          </label>
+                          <Badge variant="outline" className="text-[10px] font-bold border-primary/40 text-primary bg-primary/10">
+                            {candidateRegions.length} Régions associées à cette Wilaya
+                          </Badge>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground leading-relaxed">
+                          La wilaya <strong>{wilaya}</strong> est rattachée à plusieurs régions commerciales. Veuillez choisir la région à laquelle ce client sera associé :
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 pt-1">
+                      {candidateRegions.map((reg) => {
+                        const isSelected = region.toLowerCase() === reg.name.toLowerCase();
+                        return (
+                          <button
+                            key={reg.id || reg.name}
+                            type="button"
+                            onClick={() => handleRegionChange(reg.name)}
+                            className={cn(
+                              'p-3 rounded-xl border text-left flex items-center justify-between gap-2.5 transition-all cursor-pointer relative overflow-hidden group',
+                              isSelected
+                                ? 'border-primary bg-background shadow-md shadow-primary/10 ring-2 ring-primary/20 scale-[1.01]'
+                                : 'border-border/70 bg-card hover:bg-muted/50 hover:border-border'
+                            )}
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <span className="text-lg shrink-0">{reg.icon || '🗺️'}</span>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                  <span
+                                    className="w-2 h-2 rounded-full shrink-0"
+                                    style={{ backgroundColor: reg.color || '#2563EB' }}
+                                  />
+                                  <h4 className={cn(
+                                    'text-xs font-bold truncate',
+                                    isSelected ? 'text-primary' : 'text-foreground'
+                                  )}>
+                                    {reg.name}
+                                  </h4>
+                                </div>
+                                <p className="text-[10px] text-muted-foreground truncate mt-0.5">
+                                  {reg.subtitle || `${reg.wilayas?.length || 0} Wilayas`}
+                                </p>
+                              </div>
+                            </div>
+                            <div className={cn(
+                              'w-5 h-5 rounded-full flex items-center justify-center shrink-0 transition-all',
+                              isSelected
+                                ? 'bg-primary text-primary-foreground shadow-xs'
+                                : 'border border-border/70 group-hover:border-primary/50'
+                            )}>
+                              {isSelected && <Check className="h-3 w-3" />}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Single Region or Default fallback indication */}
+                {candidateRegions.length <= 1 && (
+                  <div className="sm:col-span-2 flex items-center justify-between p-3 rounded-xl bg-muted/40 border border-border/50 text-xs">
+                    <div className="flex items-center gap-2">
+                      <Globe className="h-4 w-4 text-primary shrink-0" />
+                      <div>
+                        <span className="text-muted-foreground text-[11px]">Région associée : </span>
+                        <strong className="text-foreground">{region || 'Algiers'}</strong>
+                      </div>
+                    </div>
+                    <Badge variant="outline" className="text-[10px] font-semibold border-border text-muted-foreground">
+                      {candidateRegions.length === 1 ? 'Région unique' : 'Défaut géographique'}
                     </Badge>
                   </div>
-                </div>
+                )}
               </div>
 
               {/* Physical Address */}
@@ -868,10 +1005,32 @@ export function EditClientForm({ clientId }: EditClientFormProps) {
               <div className="space-y-2.5 text-xs">
                 <div className="flex items-center justify-between pb-1.5 border-b border-border/30">
                   <span className="text-muted-foreground flex items-center gap-1.5">
-                    <Phone className="h-3.5 w-3.5 text-primary" /> Téléphone :
+                    <Phone className="h-3.5 w-3.5 text-primary" /> Tél. Personnel :
                   </span>
-                  <span className="font-semibold text-foreground">{phone || '—'}</span>
+                  <span className="font-semibold text-foreground font-mono">{phone || '—'}</span>
                 </div>
+
+                {stormPhone.trim() && (
+                  <div className="flex items-center justify-between pb-1.5 border-b border-border/30">
+                    <span className="text-muted-foreground flex items-center gap-1.5">
+                      <Zap className="h-3.5 w-3.5 text-rose-500" /> Numéro STORM :
+                    </span>
+                    <span className="font-bold text-rose-600 dark:text-rose-400 font-mono text-[11px] bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/20">
+                      {stormPhone.trim()}
+                    </span>
+                  </div>
+                )}
+
+                {rcNumber.trim() && (
+                  <div className="flex items-center justify-between pb-1.5 border-b border-border/30">
+                    <span className="text-muted-foreground flex items-center gap-1.5">
+                      <FileText className="h-3.5 w-3.5 text-indigo-500" /> N° RC :
+                    </span>
+                    <span className="font-semibold text-foreground font-mono text-[11px]">
+                      {rcNumber.trim()}
+                    </span>
+                  </div>
+                )}
 
                 {email && (
                   <div className="flex items-center justify-between pb-1.5 border-b border-border/30">

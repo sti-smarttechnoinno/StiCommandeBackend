@@ -63,7 +63,7 @@ final clientStatisticsProvider =
 
 List<ClientProduct> _computeFrequentProducts(List<Order> clientOrders) {
   if (clientOrders.isEmpty) {
-    return _buildDefaultFallbackProducts();
+    return const [];
   }
 
   final Map<String, _AggregatedProduct> map = {};
@@ -76,16 +76,21 @@ List<ClientProduct> _computeFrequentProducts(List<Order> clientOrders) {
       final existing = map[key];
 
       String operatorName = 'Général';
-      if (key.contains('mobilis')) {
+      if (key.contains('mobilis') || key.contains('mob-') || key.contains('flexy')) {
         operatorName = 'Mobilis';
-      } else if (key.contains('djezzy')) {
+      } else if (key.contains('djezzy') || key.contains('djz-')) {
         operatorName = 'Djezzy';
-      } else if (key.contains('ooredoo')) {
+      } else if (key.contains('ooredoo') || key.contains('storm') || key.contains('oor-')) {
         operatorName = 'Ooredoo';
+      } else if (item.product.category != null && item.product.category!.isNotEmpty) {
+        operatorName = item.product.category!;
       }
 
-      final pCode = item.product.code.isNotEmpty ? item.product.code : 'PRD-${(map.length + 1).toString().padLeft(3, '0')}';
-      final itemPrice = item.unitPrice > 0 ? item.unitPrice : item.product.nominalPrice;
+      final pCode = item.product.code.isNotEmpty
+          ? item.product.code
+          : 'PRD-${(map.length + 1).toString().padLeft(3, '0')}';
+      final itemPrice =
+          item.unitPrice > 0 ? item.unitPrice : item.product.nominalPrice;
 
       if (existing != null) {
         existing.quantity += item.quantity;
@@ -107,7 +112,7 @@ List<ClientProduct> _computeFrequentProducts(List<Order> clientOrders) {
   }
 
   if (map.isEmpty) {
-    return _buildDefaultFallbackProducts();
+    return const [];
   }
 
   final sorted = map.values.toList()
@@ -141,42 +146,4 @@ class _AggregatedProduct {
     required this.totalSpent,
     required this.lastPurchased,
   });
-}
-
-List<ClientProduct> _buildDefaultFallbackProducts() {
-  final now = DateTime.now();
-  return [
-    ClientProduct(
-      name: 'Crédit Mobilis 1000 DA',
-      code: 'MOB-1000',
-      operator: 'Mobilis',
-      quantityPurchased: 14,
-      lastPurchased: now.subtract(const Duration(days: 2)),
-      averagePrice: 960,
-    ),
-    ClientProduct(
-      name: 'Crédit Djezzy 500 DA',
-      code: 'DJZ-500',
-      operator: 'Djezzy',
-      quantityPurchased: 9,
-      lastPurchased: now.subtract(const Duration(days: 4)),
-      averagePrice: 480,
-    ),
-    ClientProduct(
-      name: 'SIM Ooredoo 4G',
-      code: 'OOD-SIM-4G',
-      operator: 'Ooredoo',
-      quantityPurchased: 6,
-      lastPurchased: now.subtract(const Duration(days: 7)),
-      averagePrice: 10000,
-    ),
-    ClientProduct(
-      name: 'Forfait Internet 10 Go',
-      code: 'PKG-10GO',
-      operator: 'Mobilis',
-      quantityPurchased: 5,
-      lastPurchased: now.subtract(const Duration(days: 10)),
-      averagePrice: 2450,
-    ),
-  ];
 }

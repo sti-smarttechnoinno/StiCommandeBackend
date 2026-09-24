@@ -1,11 +1,33 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
+export function getApiBaseUrl(): string {
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname;
+    // When accessed from another device (via IP or custom domain)
+    if (hostname && hostname !== 'localhost' && hostname !== '127.0.0.1') {
+      const protocol = window.location.protocol;
+      const envUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
+      if (envUrl) {
+        try {
+          const parsed = new URL(envUrl);
+          parsed.hostname = hostname;
+          parsed.protocol = protocol;
+          return parsed.toString().replace(/\/$/, '');
+        } catch (_) {}
+      }
+      return `${protocol}//${hostname}:8000/api`;
+    }
+  }
+  return process.env.NEXT_PUBLIC_API_URL?.trim() || 'http://localhost:8000/api';
+}
 
 const api = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: getApiBaseUrl(),
   timeout: 15000,
-  headers: { 'Content-Type': 'application/json' },
+  headers: {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+  },
 });
 
 let isRefreshing = false;
@@ -25,9 +47,29 @@ const processQueue = (error: unknown, token: string | null) => {
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     if (typeof window !== 'undefined') {
+      // Keep baseURL in sync with current accessed host if needed
+      const currentDynamicUrl = getApiBaseUrl();
+      if (config.baseURL !== currentDynamicUrl) {
+        config.baseURL = currentDynamicUrl;
+      }
+
       const token = localStorage.getItem('access_token');
       if (token && config.headers) {
         config.headers.Authorization = `Bearer ${token}`;
+      }
+    }
+    if (config.headers && !config.headers['Accept']) {
+      config.headers['Accept'] = 'application/json';
+    }
+    if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
+      if (config.headers) {
+        if (typeof (config.headers as any).delete === 'function') {
+          (config.headers as any).delete('Content-Type');
+          (config.headers as any).delete('content-type');
+        } else {
+          delete (config.headers as any)['Content-Type'];
+          delete (config.headers as any)['content-type'];
+        }
       }
     }
     return config;
@@ -61,7 +103,7 @@ api.interceptors.response.use(
         const refreshToken = typeof window !== 'undefined' ? localStorage.getItem('refresh_token') : null;
         if (!refreshToken) throw new Error('No refresh token');
 
-        const { data } = await axios.post(`${API_BASE_URL}/auth/refresh`, { refreshToken });
+        const { data } = await axios.post(`${getApiBaseUrl()}/auth/refresh`, { refreshToken });
         localStorage.setItem('access_token', data.accessToken);
         localStorage.setItem('refresh_token', data.refreshToken);
 

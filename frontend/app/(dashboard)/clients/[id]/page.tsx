@@ -45,6 +45,10 @@ import {
   Pencil,
   Hash,
   AlertCircle,
+  Coins,
+  ShieldAlert,
+  Zap,
+  FileText,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -120,6 +124,7 @@ export default function ClientProfilePage() {
   const targetRevenue = Number(objective?.targetRevenue || 0);
   const achievedRevenue = Number(objective?.achievedRevenue || 0);
   const objectivePercent = Math.min(100, Math.round(objective?.revenuePercentage || 0));
+  const solde = Number(client.outstandingBalance || 0);
 
   const avatarInitials = client.name
     .split(' ')
@@ -174,20 +179,20 @@ export default function ClientProfilePage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => toast.info(`Contacting ${client.phone}`)}
+            onClick={() => toast.info(`Appel du client au ${client.personalPhone || client.phone}`)}
             className="gap-2 rounded-full h-9 px-4 font-semibold text-xs bg-card hover:bg-muted text-foreground border-border/70 shadow-xs"
           >
             <Phone className="h-3.5 w-3.5 text-primary" />
-            <span>Call Client</span>
+            <span>Appeler le Client</span>
           </Button>
 
           <Button
             size="sm"
-            onClick={() => setEditOpen(true)}
+            onClick={() => router.push(`/clients/${id}/edit`)}
             className="gap-2 rounded-full h-9 px-4 font-bold text-xs bg-primary text-primary-foreground shadow-md shadow-primary/20 hover:shadow-lg"
           >
             <Pencil className="h-3.5 w-3.5 text-primary-foreground" />
-            <span>Edit Profile</span>
+            <span>Modifier le profil</span>
           </Button>
         </div>
       </div>
@@ -223,10 +228,39 @@ export default function ClientProfilePage() {
                     </span>
                   )}
                   {client.email && <span>•</span>}
-                  <span className="flex items-center gap-1.5">
+                  <span className="flex items-center gap-1.5" title="Numéro de Téléphone Personnel">
                     <Phone className="h-3.5 w-3.5 text-primary" />
-                    {client.phone}
+                    <span className="text-foreground font-semibold font-mono">
+                      {client.personalPhone || client.phone}
+                    </span>
                   </span>
+
+                  {client.stormPhone && (
+                    <>
+                      <span>•</span>
+                      <span
+                        className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/25 text-[11px] font-bold font-mono shadow-2xs"
+                        title="Numéro STORM (Ooredoo Flexy)"
+                      >
+                        <Zap className="h-3 w-3 text-rose-500 fill-rose-500" />
+                        <span>STORM : {client.stormPhone}</span>
+                      </span>
+                    </>
+                  )}
+
+                  {client.rcNumber && (
+                    <>
+                      <span>•</span>
+                      <span
+                        className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/25 text-[11px] font-bold font-mono shadow-2xs"
+                        title="Numéro de Registre de Commerce (RC)"
+                      >
+                        <FileText className="h-3 w-3 text-indigo-500" />
+                        <span>RC : {client.rcNumber}</span>
+                      </span>
+                    </>
+                  )}
+
                   <span>•</span>
                   <span className="flex items-center gap-1.5">
                     <MapPin className="h-3.5 w-3.5 text-amber-500" />
@@ -250,8 +284,25 @@ export default function ClientProfilePage() {
               </div>
             </div>
 
-            {/* Monthly Objective Status Summary Badge */}
+            {/* Financial & Status Summary Badge */}
             <div className="flex flex-row md:flex-col items-end justify-between md:justify-center gap-2 p-4 rounded-xl bg-muted/40 border border-border/50 w-full md:w-auto min-w-[220px]">
+              <div className="text-left md:text-right">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
+                  Solde Client
+                </span>
+                <span className={cn(
+                  "text-xs font-extrabold flex items-center gap-1.5 mt-0.5 justify-end",
+                  solde > 0
+                    ? "text-rose-600 dark:text-rose-400"
+                    : solde < 0
+                    ? "text-emerald-600 dark:text-emerald-400"
+                    : "text-foreground"
+                )}>
+                  <Coins className="h-3.5 w-3.5 text-primary" />
+                  {formatCurrency(solde)}
+                </span>
+              </div>
+              <div className="h-px bg-border/40 w-full hidden md:block" />
               <div className="text-left md:text-right">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
                   Monthly Objective
@@ -274,9 +325,41 @@ export default function ClientProfilePage() {
         </CardContent>
       </Card>
 
-      {/* Performance KPIs Grid (4 cols) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* KPI 1: Monthly Target */}
+      {/* Performance KPIs Grid (5 cols on xl) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+        {/* KPI 1: Solde Client */}
+        <Card className="border border-border/60 shadow-xs rounded-2xl p-5 bg-card">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Solde Client</span>
+            <div className={cn(
+              "p-2.5 rounded-xl",
+              solde > 0
+                ? "bg-rose-500/10 text-rose-600 dark:text-rose-400"
+                : solde < 0
+                ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                : "bg-primary/10 text-primary"
+            )}>
+              <Coins className="h-5 w-5" />
+            </div>
+          </div>
+          <div className="mt-3">
+            <span className={cn(
+              "text-xl font-extrabold",
+              solde > 0
+                ? "text-rose-600 dark:text-rose-400"
+                : solde < 0
+                ? "text-emerald-600 dark:text-emerald-400"
+                : "text-foreground"
+            )}>
+              {formatCurrency(solde)}
+            </span>
+            <span className="text-xs text-muted-foreground block mt-0.5">
+              {solde > 0 ? 'Créance à recouvrer' : solde < 0 ? 'Avance client / Crédit' : 'Solde régularisé (0 DA)'}
+            </span>
+          </div>
+        </Card>
+
+        {/* KPI 2: Monthly Target */}
         <Card className="border border-border/60 shadow-xs rounded-2xl p-5 bg-card">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Monthly Target</span>
@@ -294,7 +377,7 @@ export default function ClientProfilePage() {
           </div>
         </Card>
 
-        {/* KPI 2: Achieved Revenue */}
+        {/* KPI 3: Achieved Revenue */}
         <Card className="border border-border/60 shadow-xs rounded-2xl p-5 bg-card">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Achieved Revenue</span>
@@ -312,7 +395,7 @@ export default function ClientProfilePage() {
           </div>
         </Card>
 
-        {/* KPI 3: Total Spent / Turnover */}
+        {/* KPI 4: Total Spent / Turnover */}
         <Card className="border border-border/60 shadow-xs rounded-2xl p-5 bg-card">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Total Revenue</span>
@@ -328,7 +411,7 @@ export default function ClientProfilePage() {
           </div>
         </Card>
 
-        {/* KPI 4: Total Orders */}
+        {/* KPI 5: Total Orders */}
         <Card className="border border-border/60 shadow-xs rounded-2xl p-5 bg-card">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Total Orders</span>
@@ -445,6 +528,39 @@ export default function ClientProfilePage() {
 
               <div className="flex items-center justify-between pb-3 border-b border-border/30">
                 <span className="text-muted-foreground flex items-center gap-1.5">
+                  <Phone className="h-3.5 w-3.5 text-primary" /> Tél. Personnel:
+                </span>
+                <span className="font-semibold font-mono text-foreground">{client.personalPhone || client.phone || 'Non renseigné'}</span>
+              </div>
+
+              <div className="flex items-center justify-between pb-3 border-b border-border/30">
+                <span className="text-muted-foreground flex items-center gap-1.5">
+                  <Zap className="h-3.5 w-3.5 text-rose-500" /> Numéro STORM:
+                </span>
+                {client.stormPhone ? (
+                  <span className="font-bold font-mono text-rose-600 dark:text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-md border border-rose-500/20 text-xs shadow-2xs">
+                    {client.stormPhone}
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground/70 italic text-[11px]">Non configuré</span>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between pb-3 border-b border-border/30">
+                <span className="text-muted-foreground flex items-center gap-1.5">
+                  <FileText className="h-3.5 w-3.5 text-indigo-500" /> N° Registre de Commerce (RC):
+                </span>
+                {client.rcNumber ? (
+                  <span className="font-semibold font-mono text-foreground text-xs bg-indigo-500/10 px-2.5 py-1 rounded-md border border-indigo-500/20 shadow-2xs">
+                    {client.rcNumber}
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground/70 italic text-[11px]">Non renseigné</span>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between pb-3 border-b border-border/30">
+                <span className="text-muted-foreground flex items-center gap-1.5">
                   <Globe className="h-3.5 w-3.5 text-emerald-500" /> Region:
                 </span>
                 <span className="font-semibold text-foreground">{client.region}</span>
@@ -463,6 +579,33 @@ export default function ClientProfilePage() {
                     <User className="h-3.5 w-3.5 text-purple-500" /> Commercial Delegate:
                   </span>
                   <span className="font-semibold text-foreground">{client.delegateName}</span>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between pb-3 border-b border-border/30">
+                <span className="text-muted-foreground flex items-center gap-1.5">
+                  <Coins className="h-3.5 w-3.5 text-primary" /> Solde Actuel:
+                </span>
+                <span className={cn(
+                  "font-bold font-mono",
+                  solde > 0
+                    ? "text-rose-600 dark:text-rose-400"
+                    : solde < 0
+                    ? "text-emerald-600 dark:text-emerald-400"
+                    : "text-foreground"
+                )}>
+                  {formatCurrency(solde)}
+                </span>
+              </div>
+
+              {Number(client.creditLimit || 0) > 0 && (
+                <div className="flex items-center justify-between pb-3 border-b border-border/30">
+                  <span className="text-muted-foreground flex items-center gap-1.5">
+                    <ShieldAlert className="h-3.5 w-3.5 text-amber-500" /> Limite de Crédit:
+                  </span>
+                  <span className="font-semibold text-foreground font-mono">
+                    {formatCurrency(Number(client.creditLimit))}
+                  </span>
                 </div>
               )}
 

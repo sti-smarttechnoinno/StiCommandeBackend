@@ -4,6 +4,7 @@ services:
   # Activated with --profile full or --profile frontend
   # =========================================================
   nginx:
+    platform: linux/amd64
     profiles: ["frontend", "full"]
     image: docker.io/library/nginx:alpine
     container_name: sticommande-gateway
@@ -32,6 +33,7 @@ services:
   # Activated with --profile full or --profile frontend
   # =========================================================
   frontend:
+    platform: linux/amd64
     profiles: ["frontend", "full"]
     build:
       context: ./frontend
@@ -66,6 +68,7 @@ services:
   # 3. Backend (Laravel + PHP 8.5 + Nginx + Node WebSocket Hub + Queue Worker)
   # =========================================================
   backend:
+    platform: linux/amd64
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -124,6 +127,7 @@ services:
   # 4. Database (PostgreSQL 16)
   # =========================================================
   postgres:
+    platform: linux/amd64
     image: docker.io/library/postgres:16-alpine
     container_name: sticommande-postgres
     restart: unless-stopped
@@ -153,6 +157,7 @@ services:
   # 5. Cache & Queues (Redis 7)
   # =========================================================
   redis:
+    platform: linux/amd64
     image: docker.io/library/redis:7-alpine
     container_name: sticommande-redis
     restart: unless-stopped

@@ -11,6 +11,7 @@ export interface ReportsKPIs {
   avgOrderGrowth: number;
   activeClients: number;
   activeDelegates: number;
+  productsSold?: number;
   ordersSparkline?: number[];
   revenueSparkline?: number[];
   pendingSparkline?: number[];
@@ -57,10 +58,13 @@ export interface TopDelegateData {
 export interface BestProductData {
   id: string;
   name: string;
+  reference?: string | null;
   sales: number;
   units: number;
   category: string;
+  operator?: string | null;
   growth: string;
+  share?: number;
 }
 
 export interface GeneratedReport {
@@ -147,4 +151,62 @@ export const reportsService = {
   async bulkAction(action: string, ids: string[]): Promise<void> {
     await api.post('/reports/bulk', { action, ids });
   },
+
+  async getClientsByRegionReport(params?: {
+    region?: string;
+    debt_only?: boolean;
+    min_solde?: number;
+    search?: string;
+    sort_by?: string;
+  }): Promise<ClientsByRegionReportResponse> {
+    const res = await api.get<ClientsByRegionReportResponse>('/reports/clients-by-region', { params });
+    return res.data;
+  },
 };
+
+export interface ClientReportItem {
+  id: string;
+  client_code: string;
+  name: string;
+  phone: string;
+  storm_phone?: string | null;
+  rc_number?: string | null;
+  wilaya: string;
+  address?: string;
+  status: string;
+  client_type: string;
+  solde: number;
+  last_payment_date?: string | null;
+  last_payment_amount: number;
+  last_payment_mode?: string | null;
+  last_payment_reference?: string | null;
+  last_payment_status?: string | null;
+}
+
+export interface RegionReportGroup {
+  region: string;
+  delegate_name: string;
+  clients_count: number;
+  debtors_count: number;
+  total_solde: number;
+  total_last_payments: number;
+  clients: ClientReportItem[];
+}
+
+export interface ClientsByRegionReportResponse {
+  meta: {
+    generated_at: string;
+    generated_at_iso: string;
+    last_import_at?: string | null;
+    total_regions: number;
+    total_clients: number;
+    total_debtors: number;
+    total_solde: number;
+    total_last_payments: number;
+    filter_region: string;
+    filter_debt_only: boolean;
+    filter_min_solde?: number | null;
+  };
+  regions: RegionReportGroup[];
+}
+

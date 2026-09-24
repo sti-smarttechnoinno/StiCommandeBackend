@@ -38,6 +38,7 @@ import {
   Target,
   AlertCircle,
   Loader2,
+  Zap,
   Building,
   Store,
   Landmark,
@@ -74,29 +75,42 @@ export const WILAYAS_LIST = [
 ];
 
 export const DELEGATES_LIST = [
-  { id: '1', name: 'Commercial Delegate', region: 'Algiers' },
+  { id: '1', name: 'Délégué Commercial', region: 'Algiers' },
 ];
 
-export function getRegionForWilaya(wilayaStr: string, realRegions: RegionData[] = []): string {
-  if (!wilayaStr) return 'Algiers';
+export function getRegionsForWilaya(wilayaStr: string, realRegions: RegionData[] = []): RegionData[] {
+  if (!wilayaStr) return [];
 
   const matchCode = wilayaStr.match(/^(\d+)/)?.[1];
   const cleanName = wilayaStr.replace(/^\d+\s*-\s*/, '').trim().toLowerCase();
 
-  // 1. Check real database regions list
+  // Check real database regions list
   if (realRegions && realRegions.length > 0) {
-    for (const reg of realRegions) {
-      if (reg.wilayas && reg.wilayas.length > 0) {
-        const found = reg.wilayas.some(
-          (w) =>
-            (matchCode && (w.code === matchCode || w.code === matchCode.padStart(2, '0'))) ||
-            w.name.toLowerCase() === cleanName ||
-            (w as any).wilaya_name?.toLowerCase() === cleanName
-        );
-        if (found) return reg.name;
-      }
-    }
+    return realRegions.filter((reg) => {
+      if (!reg.wilayas || reg.wilayas.length === 0) return false;
+      return reg.wilayas.some(
+        (w) =>
+          (matchCode && (w.code === matchCode || w.code === matchCode.padStart(2, '0'))) ||
+          w.name.toLowerCase() === cleanName ||
+          (w as any).wilaya_name?.toLowerCase() === cleanName
+      );
+    });
   }
+
+  return [];
+}
+
+export function getRegionForWilaya(wilayaStr: string, realRegions: RegionData[] = []): string {
+  if (!wilayaStr) return 'Algiers';
+
+  // 1. Check matching regions from database
+  const matching = getRegionsForWilaya(wilayaStr, realRegions);
+  if (matching.length > 0) {
+    return matching[0].name;
+  }
+
+  const matchCode = wilayaStr.match(/^(\d+)/)?.[1];
+  const cleanName = wilayaStr.replace(/^\d+\s*-\s*/, '').trim().toLowerCase();
 
   // 2. Fallback to standard geographic mapping by Wilaya code
   const codeNum = matchCode ? parseInt(matchCode, 10) : 0;
@@ -132,26 +146,26 @@ export function getRegionForWilaya(wilayaStr: string, realRegions: RegionData[] 
 const CLIENT_TYPE_CARDS = [
   {
     type: 'retail' as const,
-    title: 'Retailer',
-    desc: 'Point of sale / retail shop',
+    title: 'Détaillant',
+    desc: 'Point de vente / boutique de détail',
     icon: Store,
   },
   {
     type: 'wholesale' as const,
-    title: 'Wholesaler',
-    desc: 'Bulk distributor / wholesaler',
+    title: 'Grossiste',
+    desc: 'Distributeur en gros / demi-gros',
     icon: Building,
   },
   {
     type: 'corporate' as const,
-    title: 'Corporate',
-    desc: 'Enterprise & corporate accounts',
+    title: 'Entreprise',
+    desc: 'Comptes entreprises & grands comptes',
     icon: Briefcase,
   },
   {
     type: 'government' as const,
-    title: 'Government',
-    desc: 'Public sector & state agencies',
+    title: 'Secteur Public',
+    desc: 'Organismes publics & administrations',
     icon: Landmark,
   },
 ];
@@ -189,6 +203,8 @@ export function CreateClientForm() {
   const [clientType, setClientType] = useState<ClientData['clientType']>('retail');
   const [status, setStatus] = useState<ClientData['status']>('active');
   const [phone, setPhone] = useState('');
+  const [stormPhone, setStormPhone] = useState('');
+  const [rcNumber, setRcNumber] = useState('');
   const [email, setEmail] = useState('');
   const [wilaya, setWilaya] = useState('16 - Alger');
   const [region, setRegion] = useState('Algiers');
@@ -218,7 +234,8 @@ export function CreateClientForm() {
         setRealRegions(regionsData);
 
         const currentWilaya = wilaya || '16 - Alger';
-        const autoReg = getRegionForWilaya(currentWilaya, regionsData);
+        const matches = getRegionsForWilaya(currentWilaya, regionsData);
+        const autoReg = matches.length > 0 ? matches[0].name : getRegionForWilaya(currentWilaya, regionsData);
         setRegion(autoReg);
 
         const formatted = (delegatesRes?.data || []).map((d: DelegateData) => ({
@@ -240,14 +257,13 @@ export function CreateClientForm() {
     };
   }, []);
 
-  const handleWilayaChange = (selectedWilaya: string) => {
-    setWilaya(selectedWilaya);
-    const autoAssignedRegion = getRegionForWilaya(selectedWilaya, realRegions);
-    setRegion(autoAssignedRegion);
+  const candidateRegions = React.useMemo(() => {
+    return getRegionsForWilaya(wilaya, realRegions);
+  }, [wilaya, realRegions]);
 
-    // Auto-select sales delegate matching this region if available; otherwise set to 'unassigned'
-    const matchingDelegate = delegatesList.find(
-      (d) => d.region && autoAssignedRegion && d.region.trim().toLowerCase() === autoAssignedRegion.trim().toLowerCase()
+  const updateDelegateForRegion = (targetRegion: string, currentDelegates = delegatesList) => {
+    const matchingDelegate = currentDelegates.find(
+      (d) => d.region && targetRegion && d.region.trim().toLowerCase() === targetRegion.trim().toLowerCase()
     );
     if (matchingDelegate) {
       setDelegateId(matchingDelegate.id);
@@ -256,10 +272,32 @@ export function CreateClientForm() {
     }
   };
 
+  const handleWilayaChange = (selectedWilaya: string) => {
+    setWilaya(selectedWilaya);
+    const matches = getRegionsForWilaya(selectedWilaya, realRegions);
+    let chosenRegion = '';
+    if (matches.length > 0) {
+      if (matches.some((r) => r.name.toLowerCase() === region.toLowerCase())) {
+        chosenRegion = region;
+      } else {
+        chosenRegion = matches[0].name;
+      }
+    } else {
+      chosenRegion = getRegionForWilaya(selectedWilaya, realRegions);
+    }
+    setRegion(chosenRegion);
+    updateDelegateForRegion(chosenRegion);
+  };
+
+  const handleRegionChange = (chosenRegion: string) => {
+    setRegion(chosenRegion);
+    updateDelegateForRegion(chosenRegion);
+  };
+
   const handleGenerateCode = async () => {
     const code = await fetchNextClientCode();
     setClientCode(code);
-    toast.success(`Generated sequential Client Code: ${code}`);
+    toast.success(`Code client généré : ${code}`);
   };
 
   const handleResetForm = async () => {
@@ -269,18 +307,20 @@ export function CreateClientForm() {
     setClientType('retail');
     setStatus('active');
     setPhone('');
+    setStormPhone('');
+    setRcNumber('');
     setEmail('');
     setWilaya('16 - Alger');
     setRegion('Algiers');
     setAddress('');
-    if (delegatesList.length > 0) setDelegateId(delegatesList[0].id);
+    setDelegateId('unassigned');
     setCreditLimit(0);
     setOutstandingBalance(0);
     setTargetRevenue(0);
     setTargetOrders(0);
     setNotes('');
     setErrors({});
-    toast.info('Form reset to defaults');
+    toast.info('Formulaire réinitialisé aux valeurs par défaut');
   };
 
   const selectedDelegate = (delegateId && delegateId !== 'unassigned')
@@ -289,16 +329,16 @@ export function CreateClientForm() {
 
   const validate = (): boolean => {
     const errs: Record<string, string> = {};
-    if (!name.trim()) errs.name = 'Client Name is required';
+    if (!name.trim()) errs.name = 'Le nom du client est obligatoire';
     if (!phone.trim()) {
-      errs.phone = 'Phone number is required';
+      errs.phone = 'Le numéro de téléphone est obligatoire';
     } else if (!/^[0-9+ \-()]{8,20}$/.test(phone.trim())) {
-      errs.phone = 'Please enter a valid phone number';
+      errs.phone = 'Veuillez saisir un numéro de téléphone valide';
     }
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      errs.email = 'Please enter a valid email address';
+      errs.email = 'Veuillez saisir une adresse email valide';
     }
-    if (!address.trim()) errs.address = 'Street address is required';
+    if (!address.trim()) errs.address = "L'adresse physique est obligatoire";
 
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -307,7 +347,7 @@ export function CreateClientForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate()) {
-      toast.error('Please fix the highlighted errors before submitting.');
+      toast.error('Veuillez corriger les erreurs avant de soumettre.');
       return;
     }
 
@@ -318,12 +358,17 @@ export function CreateClientForm() {
       clientType,
       status,
       phone: phone.trim(),
+      personal_phone: phone.trim(),
+      storm_phone: stormPhone.trim() || undefined,
+      stormPhone: stormPhone.trim() || undefined,
+      rc_number: rcNumber.trim() || undefined,
+      rcNumber: rcNumber.trim() || undefined,
       email: email.trim() || undefined,
       region,
       wilaya: wilaya.replace(/^\d+\s*-\s*/, ''),
       address: address.trim(),
       delegateId,
-      delegateName: selectedDelegate?.name || 'Unassigned',
+      delegateName: selectedDelegate?.name || 'Non assigné',
       creditLimit: Number(creditLimit) || 0,
       outstandingBalance: Number(outstandingBalance) || 0,
       targetRevenue: Number(targetRevenue) || 0,
@@ -333,7 +378,7 @@ export function CreateClientForm() {
 
     try {
       await clientsService.create(newClientPayload);
-      toast.success(`Client "${name}" created successfully!`);
+      toast.success(`Client "${name}" créé avec succès !`);
       router.push('/clients');
     } catch (err: any) {
       const serverErrors = err?.response?.data?.errors;
@@ -342,11 +387,11 @@ export function CreateClientForm() {
       if (serverErrors) {
         const firstKey = Object.keys(serverErrors)[0];
         const firstErr = serverErrors[firstKey]?.[0] || serverMessage;
-        toast.error(`Backend Validation Error: ${firstErr}`);
+        toast.error(`Erreur de validation backend : ${firstErr}`);
       } else if (err?.response?.status) {
-        toast.error(`Error: ${serverMessage || 'Failed to create client on server'}`);
+        toast.error(`Erreur : ${serverMessage || 'Échec de la création du client sur le serveur'}`);
       } else {
-        toast.success(`Client "${name}" created successfully!`);
+        toast.success(`Client "${name}" créé avec succès !`);
         router.push('/clients');
       }
     } finally {
@@ -359,7 +404,7 @@ export function CreateClientForm() {
       {/* Top Action Toolbar */}
       <div className="flex items-center justify-between flex-wrap gap-4 pb-4 border-b border-border/40">
         <div className="flex items-center gap-3">
-          <Link href="/clients" title="Back to Clients">
+          <Link href="/clients" title="Retour aux Clients">
             <Button
               type="button"
               variant="outline"
@@ -367,7 +412,7 @@ export function CreateClientForm() {
               className="rounded-full h-9 px-3 text-xs font-semibold gap-1.5 bg-card hover:bg-muted text-foreground border-border/70 shadow-xs"
             >
               <ArrowLeft className="h-4 w-4" />
-              <span>Back to Clients</span>
+              <span>Retour aux Clients</span>
             </Button>
           </Link>
         </div>
@@ -381,7 +426,7 @@ export function CreateClientForm() {
             className="gap-2 rounded-full h-9 px-4 font-semibold text-xs bg-card hover:bg-muted text-foreground border-border/70 shadow-xs"
           >
             <RotateCcw className="h-3.5 w-3.5 text-muted-foreground" />
-            <span>Reset Form</span>
+            <span>Réinitialiser</span>
           </Button>
 
           <Button
@@ -393,12 +438,12 @@ export function CreateClientForm() {
             {submitting ? (
               <>
                 <Loader2 className="h-3.5 w-3.5 animate-spin text-primary-foreground" />
-                <span>Saving Client...</span>
+                <span>Enregistrement en cours...</span>
               </>
             ) : (
               <>
                 <Check className="h-4 w-4 text-primary-foreground" />
-                <span>Save Client</span>
+                <span>Enregistrer le Client</span>
               </>
             )}
           </Button>
@@ -416,9 +461,9 @@ export function CreateClientForm() {
                   <Building2 className="h-5 w-5" />
                 </div>
                 <div>
-                  <CardTitle className="text-base font-bold">Client Identification</CardTitle>
+                  <CardTitle className="text-base font-bold">Identification du Client</CardTitle>
                   <CardDescription className="text-xs">
-                    Basic identification, client classification, and account status.
+                    Informations générales, classification et statut du compte.
                   </CardDescription>
                 </div>
               </div>
@@ -429,21 +474,21 @@ export function CreateClientForm() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <label htmlFor="clientCode" className="text-xs font-semibold text-foreground">
-                      Client Code <span className="text-primary">*</span>
+                      Code Client <span className="text-primary">*</span>
                     </label>
                     <button
                       type="button"
                       onClick={handleGenerateCode}
                       className="text-[11px] font-semibold text-primary hover:underline flex items-center gap-1"
                     >
-                      <Sparkles className="h-3 w-3" /> Auto-Generate
+                      <Sparkles className="h-3 w-3" /> Générer auto
                     </button>
                   </div>
                   <Input
                     id="clientCode"
                     value={clientCode}
                     onChange={(e) => setClientCode(e.target.value)}
-                    placeholder="e.g. CLI-2026-00100"
+                    placeholder="ex. CLI-2026-00100"
                     className="h-10 font-mono text-sm uppercase bg-background rounded-xl border-border/70 focus:border-primary focus:ring-primary/20"
                   />
                 </div>
@@ -451,7 +496,7 @@ export function CreateClientForm() {
                 {/* Client Name */}
                 <div className="space-y-2">
                   <label htmlFor="name" className="text-xs font-semibold text-foreground">
-                    Client / Business Name <span className="text-primary">*</span>
+                    Nom du Client / Raison Sociale <span className="text-primary">*</span>
                   </label>
                   <Input
                     id="name"
@@ -460,7 +505,7 @@ export function CreateClientForm() {
                       setName(e.target.value);
                       if (errors.name) setErrors((prev) => ({ ...prev, name: '' }));
                     }}
-                    placeholder="e.g. Telecom Express SARL"
+                    placeholder="ex. Télécom Express SARL"
                     className={cn(
                       'h-10 text-sm bg-background rounded-xl border-border/70 focus:border-primary focus:ring-primary/20',
                       errors.name && 'border-rose-500 focus:border-rose-500 focus:ring-rose-500/20'
@@ -472,12 +517,26 @@ export function CreateClientForm() {
                     </p>
                   )}
                 </div>
+
+                {/* N° Registre de Commerce (RC) */}
+                <div className="space-y-2 sm:col-span-2">
+                  <label htmlFor="rcNumber" className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                    <FileText className="h-3.5 w-3.5 text-indigo-500" /> N° Registre de Commerce (RC) <span className="text-muted-foreground text-[10px] font-normal">(Identifiant légal - Optionnel)</span>
+                  </label>
+                  <Input
+                    id="rcNumber"
+                    value={rcNumber}
+                    onChange={(e) => setRcNumber(e.target.value)}
+                    placeholder="ex. 16/00-0123456B19"
+                    className="h-10 text-sm font-mono uppercase bg-background rounded-xl border-border/70 focus:border-indigo-500 focus:ring-indigo-500/20"
+                  />
+                </div>
               </div>
 
               {/* Client Type Selector Cards */}
               <div className="space-y-2.5">
                 <label className="text-xs font-semibold text-foreground">
-                  Client Type / Classification <span className="text-primary">*</span>
+                  Type / Classification du Client <span className="text-primary">*</span>
                 </label>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {CLIENT_TYPE_CARDS.map((item) => {
@@ -516,7 +575,7 @@ export function CreateClientForm() {
               {/* Account Status Selection */}
               <div className="space-y-2.5">
                 <label className="text-xs font-semibold text-foreground">
-                  Account Status <span className="text-primary">*</span>
+                  Statut du Compte <span className="text-primary">*</span>
                 </label>
                 <div className="flex flex-wrap gap-2.5">
                   {(['active', 'pending', 'inactive', 'blocked'] as const).map((st) => (
@@ -547,19 +606,19 @@ export function CreateClientForm() {
                   <MapPin className="h-5 w-5" />
                 </div>
                 <div>
-                  <CardTitle className="text-base font-bold">Contact & Geographic Location</CardTitle>
+                  <CardTitle className="text-base font-bold">Contact & Localisation Géographique</CardTitle>
                   <CardDescription className="text-xs">
-                    Enter contact details and select the Wilaya (Province).
+                    Coordonnées du client et sélection de la wilaya.
                   </CardDescription>
                 </div>
               </div>
             </CardHeader>
             <CardContent className="p-6 space-y-6">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                {/* Phone */}
+                {/* Personal Phone */}
                 <div className="space-y-2">
                   <label htmlFor="phone" className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                    <Phone className="h-3.5 w-3.5 text-primary" /> Phone Number <span className="text-primary">*</span>
+                    <Phone className="h-3.5 w-3.5 text-primary" /> Numéro de Téléphone Personnel <span className="text-primary">*</span>
                   </label>
                   <Input
                     id="phone"
@@ -568,7 +627,7 @@ export function CreateClientForm() {
                       setPhone(e.target.value);
                       if (errors.phone) setErrors((prev) => ({ ...prev, phone: '' }));
                     }}
-                    placeholder="e.g. 0550 12 34 56"
+                    placeholder="ex. 0550 12 34 56"
                     className={cn(
                       'h-10 text-sm bg-background rounded-xl border-border/70 focus:border-primary focus:ring-primary/20',
                       errors.phone && 'border-rose-500 focus:border-rose-500 focus:ring-rose-500/20'
@@ -581,10 +640,24 @@ export function CreateClientForm() {
                   )}
                 </div>
 
-                {/* Email */}
+                {/* Storm Phone */}
                 <div className="space-y-2">
+                  <label htmlFor="stormPhone" className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                    <Zap className="h-3.5 w-3.5 text-rose-500" /> Numéro STORM (Ooredoo) <span className="text-muted-foreground text-[10px]">(Ligne Flexy - Optionnel)</span>
+                  </label>
+                  <Input
+                    id="stormPhone"
+                    value={stormPhone}
+                    onChange={(e) => setStormPhone(e.target.value)}
+                    placeholder="ex. 0557 99 88 77"
+                    className="h-10 text-sm bg-background rounded-xl border-border/70 focus:border-rose-500 focus:ring-rose-500/20 font-mono"
+                  />
+                </div>
+
+                {/* Email */}
+                <div className="space-y-2 sm:col-span-2">
                   <label htmlFor="email" className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                    <Mail className="h-3.5 w-3.5 text-blue-500" /> Email Address <span className="text-muted-foreground text-[10px]">(Optional)</span>
+                    <Mail className="h-3.5 w-3.5 text-blue-500" /> Adresse Email <span className="text-muted-foreground text-[10px]">(Optionnel)</span>
                   </label>
                   <Input
                     id="email"
@@ -594,7 +667,7 @@ export function CreateClientForm() {
                       setEmail(e.target.value);
                       if (errors.email) setErrors((prev) => ({ ...prev, email: '' }));
                     }}
-                    placeholder="e.g. contact@client.dz"
+                    placeholder="ex. contact@client.dz"
                     className={cn(
                       'h-10 text-sm bg-background rounded-xl border-border/70 focus:border-primary focus:ring-primary/20',
                       errors.email && 'border-rose-500 focus:border-rose-500 focus:ring-rose-500/20'
@@ -610,11 +683,11 @@ export function CreateClientForm() {
                 {/* Wilaya Selection */}
                 <div className="space-y-2 sm:col-span-2">
                   <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                    <MapPin className="h-3.5 w-3.5 text-amber-500" /> Wilaya (Province) <span className="text-primary">*</span>
+                    <MapPin className="h-3.5 w-3.5 text-amber-500" /> Wilaya <span className="text-primary">*</span>
                   </label>
                   <Select value={wilaya} onValueChange={(val) => { if (val) handleWilayaChange(val); }}>
                     <SelectTrigger className="w-full h-10 min-h-[40px] text-sm font-semibold text-foreground bg-background rounded-xl border-border/70 focus:ring-primary/20 shadow-2xs">
-                      <SelectValue placeholder="Select wilaya" />
+                      <SelectValue placeholder="Sélectionnez une wilaya" />
                     </SelectTrigger>
                     <SelectContent side="bottom" align="start" className="w-[var(--radix-select-trigger-width)] max-h-60 rounded-xl border-border/60 p-1">
                       {WILAYAS_LIST.map((w) => (
@@ -625,12 +698,99 @@ export function CreateClientForm() {
                     </SelectContent>
                   </Select>
                 </div>
+
+                {/* Multi-Region Association Selector */}
+                {candidateRegions.length > 1 && (
+                  <div className="sm:col-span-2 p-4 rounded-2xl bg-primary/5 border-2 border-primary/20 space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="flex h-2 w-2 rounded-full bg-primary animate-pulse" />
+                          <label className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                            <Globe className="h-3.5 w-3.5 text-primary" />
+                            Région Commerciale d&apos;Affectation <span className="text-primary">*</span>
+                          </label>
+                          <Badge variant="outline" className="text-[10px] font-bold border-primary/40 text-primary bg-primary/10">
+                            {candidateRegions.length} Régions associées à cette Wilaya
+                          </Badge>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground leading-relaxed">
+                          La wilaya <strong>{wilaya}</strong> est rattachée à plusieurs régions commerciales. Veuillez choisir la région à laquelle ce client sera associé :
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 pt-1">
+                      {candidateRegions.map((reg) => {
+                        const isSelected = region.toLowerCase() === reg.name.toLowerCase();
+                        return (
+                          <button
+                            key={reg.id || reg.name}
+                            type="button"
+                            onClick={() => handleRegionChange(reg.name)}
+                            className={cn(
+                              'p-3 rounded-xl border text-left flex items-center justify-between gap-2.5 transition-all cursor-pointer relative overflow-hidden group',
+                              isSelected
+                                ? 'border-primary bg-background shadow-md shadow-primary/10 ring-2 ring-primary/20 scale-[1.01]'
+                                : 'border-border/70 bg-card hover:bg-muted/50 hover:border-border'
+                            )}
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <span className="text-lg shrink-0">{reg.icon || '🗺️'}</span>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                  <span
+                                    className="w-2 h-2 rounded-full shrink-0"
+                                    style={{ backgroundColor: reg.color || '#2563EB' }}
+                                  />
+                                  <h4 className={cn(
+                                    'text-xs font-bold truncate',
+                                    isSelected ? 'text-primary' : 'text-foreground'
+                                  )}>
+                                    {reg.name}
+                                  </h4>
+                                </div>
+                                <p className="text-[10px] text-muted-foreground truncate mt-0.5">
+                                  {reg.subtitle || `${reg.wilayas?.length || 0} Wilayas`}
+                                </p>
+                              </div>
+                            </div>
+                            <div className={cn(
+                              'w-5 h-5 rounded-full flex items-center justify-center shrink-0 transition-all',
+                              isSelected
+                                ? 'bg-primary text-primary-foreground shadow-xs'
+                                : 'border border-border/70 group-hover:border-primary/50'
+                            )}>
+                              {isSelected && <Check className="h-3 w-3" />}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Single Region or Default fallback indication */}
+                {candidateRegions.length <= 1 && (
+                  <div className="sm:col-span-2 flex items-center justify-between p-3 rounded-xl bg-muted/40 border border-border/50 text-xs">
+                    <div className="flex items-center gap-2">
+                      <Globe className="h-4 w-4 text-primary shrink-0" />
+                      <div>
+                        <span className="text-muted-foreground text-[11px]">Région associée : </span>
+                        <strong className="text-foreground">{region || 'Algiers'}</strong>
+                      </div>
+                    </div>
+                    <Badge variant="outline" className="text-[10px] font-semibold border-border text-muted-foreground">
+                      {candidateRegions.length === 1 ? 'Région unique' : 'Défaut géographique'}
+                    </Badge>
+                  </div>
+                )}
               </div>
 
               {/* Detailed Address */}
               <div className="space-y-2">
                 <label htmlFor="address" className="text-xs font-semibold text-foreground">
-                  Street Address / Headquarters Location <span className="text-primary">*</span>
+                  Adresse physique / Siège social <span className="text-primary">*</span>
                 </label>
                 <Textarea
                   id="address"
@@ -640,7 +800,7 @@ export function CreateClientForm() {
                     setAddress(e.target.value);
                     if (errors.address) setErrors((prev) => ({ ...prev, address: '' }));
                   }}
-                  placeholder="e.g. 12 Rue Larbi Ben M'hidi, Alger Centre"
+                  placeholder="ex. 12 Rue Larbi Ben M'hidi, Alger Centre"
                   className={cn(
                     'text-sm bg-background rounded-xl border-border/70 focus:border-primary focus:ring-primary/20 resize-none',
                     errors.address && 'border-rose-500 focus:border-rose-500 focus:ring-rose-500/20'
@@ -663,9 +823,9 @@ export function CreateClientForm() {
                   <UserCheck className="h-5 w-5" />
                 </div>
                 <div>
-                  <CardTitle className="text-base font-bold">Commercial & Sales Delegate</CardTitle>
+                  <CardTitle className="text-base font-bold">Attribution Commerciale & Délégué</CardTitle>
                   <CardDescription className="text-xs">
-                    Assign a dedicated sales delegate responsible for customer orders and follow-ups.
+                    Attribuez un délégué commercial dédié pour le suivi et les commandes.
                   </CardDescription>
                 </div>
               </div>
@@ -673,21 +833,21 @@ export function CreateClientForm() {
             <CardContent className="p-6 space-y-5">
               <div className="space-y-2">
                 <label className="text-xs font-semibold text-foreground">
-                  Assigned Sales Delegate <span className="text-primary">*</span>
+                  Délégué Commercial Assigné <span className="text-primary">*</span>
                 </label>
                 <Select value={delegateId || 'unassigned'} onValueChange={(val) => { if (val) setDelegateId(val); }}>
                   <SelectTrigger className="w-full h-10 min-h-[40px] text-sm font-semibold text-foreground bg-background rounded-xl border-border/70 focus:ring-primary/20 shadow-2xs">
-                    <SelectValue placeholder="Select sales delegate">
-                      {selectedDelegate ? `${selectedDelegate.name} (${selectedDelegate.region} Region)` : 'No delegate assigned (Unassigned)'}
+                    <SelectValue placeholder="Sélectionnez un délégué commercial">
+                      {selectedDelegate ? `${selectedDelegate.name} (Région ${selectedDelegate.region})` : 'Aucun délégué assigné (Non assigné)'}
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent className="rounded-xl border-border/60 p-1">
                     <SelectItem value="unassigned" className="text-xs font-semibold py-2 rounded-lg cursor-pointer text-amber-600 bg-amber-500/10 mb-1">
-                      🚫 No delegate assigned (Unassigned)
+                      🚫 Aucun délégué assigné (Non assigné)
                     </SelectItem>
                     {(delegatesList.length > 0 ? delegatesList : DELEGATES_LIST).map((d) => (
                       <SelectItem key={d.id} value={d.id} className="text-xs font-semibold py-2 rounded-lg cursor-pointer">
-                        {d.name} ({d.region} Region)
+                        {d.name} (Région {d.region})
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -702,18 +862,18 @@ export function CreateClientForm() {
                     </div>
                     <div>
                       <p className="font-semibold text-foreground">{selectedDelegate.name}</p>
-                      <p className="text-muted-foreground text-[11px]">Primary Delegate for {selectedDelegate.region}</p>
+                      <p className="text-muted-foreground text-[11px]">Délégué principal pour la région {selectedDelegate.region}</p>
                     </div>
                   </div>
                   <Badge variant="outline" className="rounded-full text-[10px] font-semibold border-primary/30 text-primary bg-primary/5">
-                    Assigned
+                    Assigné
                   </Badge>
                 </div>
               ) : (
                 <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center gap-2.5 text-xs text-amber-700 dark:text-amber-400">
                   <AlertCircle className="h-4 w-4 shrink-0 text-amber-500" />
                   <p className="text-[11px] leading-relaxed">
-                    No sales delegate currently assigned for <strong>{wilaya}</strong> ({region} Region). Client will be created without an assigned delegate, or you can manually select one above.
+                    Aucun délégué commercial n&apos;est actuellement assigné pour <strong>{wilaya}</strong> (Région {region}). Le client sera créé sans délégué assigné, ou vous pouvez en sélectionner un manuellement ci-dessus.
                   </p>
                 </div>
               )}
@@ -728,9 +888,9 @@ export function CreateClientForm() {
                   <Target className="h-5 w-5" />
                 </div>
                 <div>
-                  <CardTitle className="text-base font-bold">Monthly Objective & Sales Targets</CardTitle>
+                  <CardTitle className="text-base font-bold">Objectifs Mensuels & Cibles de Vente</CardTitle>
                   <CardDescription className="text-xs">
-                    Configure sales target revenue and monthly order quota for this client.
+                    Définissez le chiffre d&apos;affaires prévisionnel et l&apos;objectif de commandes mensuel pour ce client.
                   </CardDescription>
                 </div>
               </div>
@@ -740,8 +900,8 @@ export function CreateClientForm() {
                 {/* Monthly Revenue Objective */}
                 <div className="space-y-2">
                   <label htmlFor="targetRevenue" className="text-xs font-semibold text-foreground flex items-center justify-between">
-                    <span>Target Revenue / Month (DZD)</span>
-                    <span className="text-[10px] text-muted-foreground">Optional</span>
+                    <span>Chiffre d&apos;Affaires Cible / Mois (DZD)</span>
+                    <span className="text-[10px] text-muted-foreground">Optionnel</span>
                   </label>
                   <div className="relative">
                     <Input
@@ -751,7 +911,7 @@ export function CreateClientForm() {
                       step={50000}
                       value={targetRevenue || ''}
                       onChange={(e) => setTargetRevenue(Number(e.target.value))}
-                      placeholder="e.g. 500000"
+                      placeholder="ex. 500000"
                       className="h-10 text-sm bg-background rounded-xl border-border/70 focus:border-primary focus:ring-primary/20 font-medium pr-16"
                     />
                     <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground pointer-events-none">
@@ -760,7 +920,7 @@ export function CreateClientForm() {
                   </div>
                   {/* Preset chips */}
                   <div className="flex items-center gap-1.5 flex-wrap pt-1">
-                    <span className="text-[10px] text-muted-foreground font-medium mr-1">Presets:</span>
+                    <span className="text-[10px] text-muted-foreground font-medium mr-1">Préréglages :</span>
                     {[250000, 500000, 1000000, 2000000].map((val) => (
                       <button
                         key={val}
@@ -782,8 +942,8 @@ export function CreateClientForm() {
                 {/* Monthly Target Orders */}
                 <div className="space-y-2">
                   <label htmlFor="targetOrders" className="text-xs font-semibold text-foreground flex items-center justify-between">
-                    <span>Target Orders / Month</span>
-                    <span className="text-[10px] text-muted-foreground">Optional</span>
+                    <span>Commandes Cibles / Mois</span>
+                    <span className="text-[10px] text-muted-foreground">Optionnel</span>
                   </label>
                   <Input
                     id="targetOrders"
@@ -791,12 +951,12 @@ export function CreateClientForm() {
                     min={0}
                     value={targetOrders || ''}
                     onChange={(e) => setTargetOrders(Number(e.target.value))}
-                    placeholder="e.g. 10"
+                    placeholder="ex. 10"
                     className="h-10 text-sm bg-background rounded-xl border-border/70 focus:border-primary focus:ring-primary/20 font-medium"
                   />
                   {/* Preset chips */}
                   <div className="flex items-center gap-1.5 flex-wrap pt-1">
-                    <span className="text-[10px] text-muted-foreground font-medium mr-1">Presets:</span>
+                    <span className="text-[10px] text-muted-foreground font-medium mr-1">Préréglages :</span>
                     {[5, 10, 20, 50].map((val) => (
                       <button
                         key={val}
@@ -809,7 +969,7 @@ export function CreateClientForm() {
                             : 'bg-muted/50 text-muted-foreground border-border/60 hover:bg-muted'
                         )}
                       >
-                        {val} orders
+                        {val} cmd
                       </button>
                     ))}
                   </div>
@@ -826,9 +986,9 @@ export function CreateClientForm() {
                   <FileText className="h-5 w-5" />
                 </div>
                 <div>
-                  <CardTitle className="text-base font-bold">Internal Notes & Commercial Terms</CardTitle>
+                  <CardTitle className="text-base font-bold">Remarques Internes & Conditions Commerciales</CardTitle>
                   <CardDescription className="text-xs">
-                    Special agreements, delivery notes, or administrative remarks.
+                    Accords particuliers, consignes de livraison ou mentions administratives.
                   </CardDescription>
                 </div>
               </div>
@@ -838,7 +998,7 @@ export function CreateClientForm() {
                 rows={3}
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="e.g. Requires advance notification before large credit expansion. Prefers morning deliveries."
+                placeholder="ex. Prévenir avant toute extension importante de crédit. Préfère les livraisons en matinée."
                 className="text-sm bg-background rounded-xl border-border/70 focus:border-primary focus:ring-primary/20 resize-none"
               />
             </CardContent>
@@ -852,10 +1012,10 @@ export function CreateClientForm() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Sparkles className="h-4 w-4 text-primary" />
-                  <CardTitle className="text-sm font-bold text-foreground">Live Client Profile Card</CardTitle>
+                  <CardTitle className="text-sm font-bold text-foreground">Aperçu Fiche Client</CardTitle>
                 </div>
                 <Badge variant="outline" className="text-[10px] font-bold border-primary/30 text-primary">
-                  Preview
+                  Aperçu
                 </Badge>
               </div>
             </CardHeader>
@@ -865,7 +1025,7 @@ export function CreateClientForm() {
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <h3 className="text-base font-bold text-foreground tracking-tight line-clamp-1">
-                      {name.trim() || 'New Client Name'}
+                      {name.trim() || 'Nouveau Client'}
                     </h3>
                     <p className="font-mono text-xs font-semibold text-muted-foreground mt-0.5">
                       {clientCode}
@@ -877,7 +1037,7 @@ export function CreateClientForm() {
                 <div className="flex items-center gap-2 flex-wrap pt-1">
                   <ClientTypeBadge type={clientType} />
                   <Badge variant="outline" className="text-[11px] font-semibold border-primary/30 text-primary bg-primary/10">
-                    {region} Region
+                    Région {region}
                   </Badge>
                 </div>
               </div>
@@ -888,45 +1048,67 @@ export function CreateClientForm() {
               <div className="space-y-2.5 text-xs">
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground flex items-center gap-1.5">
-                    <Phone className="h-3.5 w-3.5 text-primary" /> Phone:
+                    <Phone className="h-3.5 w-3.5 text-primary" /> Tél. Personnel :
                   </span>
-                  <span className="font-semibold text-foreground">{phone.trim() || '—'}</span>
+                  <span className="font-semibold text-foreground font-mono">{phone.trim() || '—'}</span>
                 </div>
+
+                {stormPhone.trim() && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground flex items-center gap-1.5">
+                      <Zap className="h-3.5 w-3.5 text-rose-500" /> Numéro STORM :
+                    </span>
+                    <span className="font-bold text-rose-600 dark:text-rose-400 font-mono text-[11px] bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/20">
+                      {stormPhone.trim()}
+                    </span>
+                  </div>
+                )}
+
+                {rcNumber.trim() && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground flex items-center gap-1.5">
+                      <FileText className="h-3.5 w-3.5 text-indigo-500" /> N° RC :
+                    </span>
+                    <span className="font-semibold text-foreground font-mono text-[11px]">
+                      {rcNumber.trim()}
+                    </span>
+                  </div>
+                )}
 
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground flex items-center gap-1.5">
-                    <MapPin className="h-3.5 w-3.5 text-amber-500" /> Wilaya:
+                    <MapPin className="h-3.5 w-3.5 text-amber-500" /> Wilaya :
                   </span>
                   <span className="font-semibold text-foreground">{wilaya || '—'}</span>
                 </div>
 
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground flex items-center gap-1.5">
-                    <Globe className="h-3.5 w-3.5 text-emerald-500" /> Assigned Region:
+                    <Globe className="h-3.5 w-3.5 text-emerald-500" /> Région Assignée :
                   </span>
                   <span className="font-bold text-primary">{region || '—'}</span>
                 </div>
 
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground flex items-center gap-1.5">
-                    <UserCheck className="h-3.5 w-3.5 text-purple-500" /> Sales Delegate:
+                    <UserCheck className="h-3.5 w-3.5 text-purple-500" /> Délégué Commercial :
                   </span>
                   <span className="font-semibold text-foreground truncate max-w-[170px]">
-                    {selectedDelegate?.name || 'Unassigned'}
+                    {selectedDelegate?.name || 'Non assigné'}
                   </span>
                 </div>
               </div>
 
               <div className="p-3.5 rounded-xl bg-muted/40 border border-border/50 text-xs space-y-1.5">
                 <div className="flex items-center justify-between font-semibold text-foreground">
-                  <span>Monthly Target:</span>
+                  <span>Objectif Mensuel :</span>
                   <span className="text-primary font-bold">
-                    {targetRevenue > 0 ? formatCurrency(targetRevenue) : 'Not configured'}
+                    {targetRevenue > 0 ? formatCurrency(targetRevenue) : 'Non configuré'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                  <span>Target Orders:</span>
-                  <span>{targetOrders > 0 ? `${targetOrders} orders/mo` : 'Not configured'}</span>
+                  <span>Commandes Cibles :</span>
+                  <span>{targetOrders > 0 ? `${targetOrders} cmd/mois` : 'Non configuré'}</span>
                 </div>
               </div>
             </CardContent>
@@ -939,7 +1121,7 @@ export function CreateClientForm() {
                 onClick={handleResetForm}
                 className="text-xs text-muted-foreground hover:text-foreground h-8"
               >
-                Clear Form
+                Réinitialiser
               </Button>
               <Button
                 type="submit"
@@ -948,7 +1130,7 @@ export function CreateClientForm() {
                 className="gap-2 rounded-xl h-8 px-4 font-bold text-xs bg-primary text-primary-foreground hover:bg-primary/90"
               >
                 {submitting ? <Loader2 className="h-3 w-3 animate-spin text-primary-foreground" /> : <Check className="h-3.5 w-3.5 text-primary-foreground" />}
-                <span>Create Client</span>
+                <span>Créer le Client</span>
               </Button>
             </div>
           </Card>

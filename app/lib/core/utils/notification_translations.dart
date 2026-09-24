@@ -50,6 +50,14 @@ class NotificationLocalizer {
       }
     }
 
+    // Extract order code if present in data or title
+    final rawOrderCode = data?['order_code']?.toString() ?? data?['order_number']?.toString();
+    final codeMatch = rawOrderCode != null && rawOrderCode.trim().isNotEmpty
+        ? ' #${rawOrderCode.trim()}'
+        : (RegExp(r'#(CMD-[^\s]+|ORD-[^\s]+|\d+)').firstMatch(rawTitle ?? '')?.group(0) != null
+            ? ' ${RegExp(r'#(CMD-[^\s]+|ORD-[^\s]+|\d+)').firstMatch(rawTitle ?? '')!.group(0)}'
+            : '');
+
     // 2. Order Created / Submitted
     if (type == 'order_submitted' ||
         type == 'order_created' ||
@@ -57,52 +65,105 @@ class NotificationLocalizer {
         (rawTitle?.toLowerCase().contains('soumise') ?? false) ||
         (rawTitle?.toLowerCase().contains('nouvelle commande') ?? false) ||
         (rawTitle?.toLowerCase().contains('new order') ?? false)) {
-      final codeMatch = RegExp(r'#(ORD-[^\s]+|\d+)').firstMatch(rawTitle ?? '');
-      final codeSuffix = codeMatch != null ? ' ${codeMatch.group(0)}' : '';
-
       switch (lang) {
         case 'ar':
           return (
-            title: 'تم تسجيل الطلبية$codeSuffix',
+            title: 'تم تسجيل الطلبية$codeMatch',
             body: rawBody ?? 'تم استلام طلبيتك بنجاح وهي قيد المعالجة.',
             actionLabel: 'عرض',
           );
         case 'en':
           return (
-            title: 'Order$codeSuffix Submitted',
+            title: 'Order$codeMatch Submitted',
             body: rawBody ?? 'Your order has been submitted successfully.',
             actionLabel: 'View',
           );
         case 'fr':
         default:
           return (
-            title: 'Commande$codeSuffix Soumise',
+            title: 'Commande$codeMatch Soumise',
             body: rawBody ?? 'Votre commande a été enregistrée avec succès.',
             actionLabel: 'Voir',
           );
       }
     }
 
-    // 3. Order Approved / Validated
-    if (type == 'order_approved' || (rawTitle?.toLowerCase().contains('valid') ?? false)) {
+    // 3. Order Partially Validated (Validation Partielle)
+    if (type == 'order_partially_validated' ||
+        (rawTitle?.toLowerCase().contains('partiel') ?? false) ||
+        (rawBody?.toLowerCase().contains('partiel') ?? false)) {
       switch (lang) {
         case 'ar':
           return (
-            title: 'تم تأكيد الطلبية',
+            title: 'تأكيد جزئي للطلبية$codeMatch',
+            body: rawBody ?? 'تمت المصادقة الجزئية على طلبيتك. يرجى مراجعة الكميات المقبولة.',
+            actionLabel: 'عرض',
+          );
+        case 'en':
+          return (
+            title: 'Order$codeMatch Partially Validated',
+            body: rawBody ?? 'Your order has been partially validated. Check approved quantities.',
+            actionLabel: 'View',
+          );
+        case 'fr':
+        default:
+          return (
+            title: 'Commande$codeMatch Partiellement Validée',
+            body: rawBody ?? 'Votre commande a été partiellement validée. Consultez les quantités approuvées.',
+            actionLabel: 'Voir',
+          );
+      }
+    }
+
+    // 4. Order Approved / Validated
+    if (type == 'order_validated' ||
+        type == 'order_approved' ||
+        (rawTitle?.toLowerCase().contains('valid') ?? false)) {
+      switch (lang) {
+        case 'ar':
+          return (
+            title: 'تم تأكيد الطلبية$codeMatch',
             body: rawBody ?? 'تم تأكيد طلبيتك بنجاح.',
             actionLabel: 'عرض',
           );
         case 'en':
           return (
-            title: 'Order Validated',
+            title: 'Order$codeMatch Validated',
             body: rawBody ?? 'Your order has been validated successfully.',
             actionLabel: 'View',
           );
         case 'fr':
         default:
           return (
-            title: 'Commande Validée',
+            title: 'Commande$codeMatch Validée',
             body: rawBody ?? 'Votre commande a été validée avec succès.',
+            actionLabel: 'Voir',
+          );
+      }
+    }
+
+    // 5. Order Cancelled
+    if (type == 'order_cancelled' ||
+        (rawTitle?.toLowerCase().contains('annul') ?? false) ||
+        (rawTitle?.toLowerCase().contains('cancel') ?? false)) {
+      switch (lang) {
+        case 'ar':
+          return (
+            title: 'تم إلغاء الطلبية$codeMatch',
+            body: rawBody ?? 'تم إلغاء هذه الطلبية من طرف الإدارة.',
+            actionLabel: 'عرض',
+          );
+        case 'en':
+          return (
+            title: 'Order$codeMatch Cancelled',
+            body: rawBody ?? 'Your order has been cancelled.',
+            actionLabel: 'View',
+          );
+        case 'fr':
+        default:
+          return (
+            title: 'Commande$codeMatch Annulée',
+            body: rawBody ?? 'Votre commande a été annulée.',
             actionLabel: 'Voir',
           );
       }
@@ -158,7 +219,41 @@ class NotificationLocalizer {
       }
     }
 
-    // 5. Default / Fallback
+    // 5. Task / Mission Notifications
+    if (type == 'task_created' ||
+        type == 'task_assigned' ||
+        type == 'task_updated' ||
+        type == 'task_status_changed' ||
+        type == 'task' ||
+        (type?.startsWith('task') ?? false) ||
+        (type?.startsWith('mission') ?? false) ||
+        (rawTitle?.toLowerCase().contains('mission') ?? false) ||
+        (rawTitle?.toLowerCase().contains('tâche') ?? false)) {
+      final isNewTask = type == 'task_created' || type == 'task_assigned';
+      switch (lang) {
+        case 'ar':
+          return (
+            title: isNewTask ? 'مهمة جديدة مسندة إليك' : (rawTitle ?? 'تحديث في المهمة'),
+            body: rawBody ?? (isNewTask ? 'تم إسناد مهمة جديدة لك، يرجى الاطلاع عليها.' : 'تم تعديل حالة المهمة.'),
+            actionLabel: 'عرض',
+          );
+        case 'en':
+          return (
+            title: isNewTask ? 'New Mission Assigned' : (rawTitle ?? 'Mission Status Updated'),
+            body: rawBody ?? (isNewTask ? 'A new task has been assigned to you.' : 'Task status has been updated.'),
+            actionLabel: 'View',
+          );
+        case 'fr':
+        default:
+          return (
+            title: isNewTask ? 'Nouvelle Mission Assignée' : (rawTitle ?? 'Mise à jour de la Mission'),
+            body: rawBody ?? (isNewTask ? 'Une nouvelle tâche vous a été assignée.' : 'Le statut de la tâche a été mis à jour.'),
+            actionLabel: 'Voir',
+          );
+      }
+    }
+
+    // 6. Default / Fallback
     final actionLabel = lang == 'ar' ? 'عرض' : (lang == 'en' ? 'View' : 'Voir');
     final defaultTitle = lang == 'ar'
         ? 'إشعار جديد'

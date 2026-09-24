@@ -8,11 +8,17 @@ export function filterWilayas(wilayas: WilayaRow[], filters: WilayasFilters): Wi
         w.name.toLowerCase().includes(q) ||
         w.code.includes(q) ||
         w.delegate?.name.toLowerCase().includes(q) ||
+        w.delegates?.some((d) => d.name.toLowerCase().includes(q)) ||
         w.regionName.toLowerCase().includes(q);
       if (!match) return false;
     }
     if (filters.region.length > 0 && !filters.region.includes(w.regionId)) return false;
-    if (filters.delegate.length > 0 && (!w.delegate || !filters.delegate.includes(w.delegate.name))) return false;
+    if (filters.delegate.length > 0) {
+      const hasDelegate =
+        (w.delegate && filters.delegate.includes(w.delegate.name)) ||
+        w.delegates?.some((d) => filters.delegate.includes(d.name));
+      if (!hasDelegate) return false;
+    }
     if (filters.status.length > 0 && !filters.status.includes(w.status)) return false;
     if (filters.revenueRange !== 'all') {
       if (filters.revenueRange === 'over_10m' && w.monthlyRevenue < 10000000) return false;

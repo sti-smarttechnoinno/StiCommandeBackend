@@ -6,10 +6,11 @@ export interface WilayaDelegate {
   id: string;
   name: string;
   phone: string;
-  email: string;
+  email?: string;
   avatar: string;
   isOnline: boolean;
   role: string;
+  region?: string;
 }
 
 export interface Wilaya {
@@ -19,6 +20,7 @@ export interface Wilaya {
   regionId: RegionId;
   regionName: string;
   delegate: WilayaDelegate | null;
+  delegates?: WilayaDelegate[];
   clients: number;
   ordersToday: number;
   revenue: number;

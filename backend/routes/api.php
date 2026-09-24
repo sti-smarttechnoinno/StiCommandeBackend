@@ -38,16 +38,6 @@ Route::post('/delegates/{delegate}/objectives', [DelegateObjectiveController::cl
 Route::get('/clients/{client}/objectives', [ClientObjectiveController::class, 'index']);
 Route::post('/clients/{client}/objectives', [ClientObjectiveController::class, 'storeOrUpdate']);
 
-// User Objectives & Tasks (Public & Auth fallback)
-Route::get('/objectives/assignable-users', [UserObjectiveController::class, 'assignableUsers']);
-Route::get('/objectives', [UserObjectiveController::class, 'index']);
-Route::post('/objectives/batch-assign', [UserObjectiveController::class, 'batchAssign']);
-Route::get('/tasks/history', [UserTaskController::class, 'history']);
-Route::get('/tasks', [UserTaskController::class, 'index']);
-Route::post('/tasks', [UserTaskController::class, 'store']);
-Route::get('/tasks/{id}', [UserTaskController::class, 'show']);
-Route::put('/tasks/{id}/status', [UserTaskController::class, 'updateStatus']);
-Route::delete('/tasks/{id}', [UserTaskController::class, 'destroy']);
 
 // Reports routes (Public / Auth)
 Route::get('/reports/kpis', [ReportController::class, 'kpis']);

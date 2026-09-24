@@ -51,10 +51,11 @@ export interface OrderData {
   wilaya?: string;
   delivery_address?: string;
   total_amount: number;
-  status: 'pending' | 'validated' | 'partially_validated' | 'processing' | 'delivered' | 'cancelled';
+  status: 'pending' | 'validated' | 'partially_validated' | 'processing' | 'delivered' | 'cancelled' | 'rejected';
   payment_method: string;
   priority?: 'low' | 'normal' | 'high' | 'urgent';
   notes?: string;
+  rejection_reason?: string;
   created_at: string;
   updated_at: string;
   items?: OrderItemData[];
@@ -129,16 +130,38 @@ export const ordersService = {
 
   create: async (data: Partial<OrderData> & { items: OrderItemData[] }): Promise<OrderData> => {
     const res = await api.post<{ data: OrderData }>('/orders', data);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('sti-order-created', {
+          detail: { order: res.data?.data, status: res.data?.data?.status || 'pending' },
+        })
+      );
+    }
     return res.data.data;
   },
 
   update: async (id: string, data: Partial<OrderData> & { items?: OrderItemData[] }): Promise<OrderData> => {
     const res = await api.put<{ data: OrderData }>(`/orders/${id}`, data);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('sti-order-updated', {
+          detail: { id, status: data.status || res.data?.data?.status, order: res.data?.data },
+        })
+      );
+    }
     return res.data.data;
   },
 
-  updateStatus: async (id: string, status: string, validatedItems?: Record<string, number>): Promise<{ data: OrderData; delivery_note?: any }> => {
+  updateStatus: async (
+    id: string,
+    status: string,
+    validatedItems?: Record<string, number>,
+    notes?: string,
+    rejectionReason?: string
+  ): Promise<{ data: OrderData; delivery_note?: any }> => {
     const payload: any = { status };
+    if (notes) payload.notes = notes;
+    if (rejectionReason) payload.rejection_reason = rejectionReason;
     if (validatedItems) {
       payload.validated_items = Object.entries(validatedItems).map(([itemId, quantity]) => ({
         id: itemId,
@@ -146,6 +169,24 @@ export const ordersService = {
       }));
     }
     const res = await api.put<{ data: OrderData; delivery_note?: any }>(`/orders/${id}`, payload);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('sti-order-updated', {
+          detail: { id, status, order: res.data?.data },
+        })
+      );
+    }
     return res.data;
+  },
+
+  delete: async (id: string): Promise<void> => {
+    await api.delete(`/orders/${id}`);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('sti-order-deleted', {
+          detail: { id },
+        })
+      );
+    }
   },
 };

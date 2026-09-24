@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
+import '../../../../core/services/fcm_service.dart';
 import '../providers/orders_history_provider.dart';
 import '../widgets/orders_header.dart';
 import '../widgets/month_selector_bar.dart';
@@ -22,15 +24,25 @@ class OrdersPage extends ConsumerStatefulWidget {
 
 class _OrdersPageState extends ConsumerState<OrdersPage> {
   final _scrollController = ScrollController();
+  StreamSubscription? _fcmSubscription;
 
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
+
+    // Auto-refresh orders list in real-time when an order notification arrives
+    _fcmSubscription = FcmService.onMessageReceived.listen((message) {
+      final type = message.data['type']?.toString();
+      if (type != null && (type.startsWith('order') || type == 'order')) {
+        ref.read(ordersProvider.notifier).refresh();
+      }
+    });
   }
 
   @override
   void dispose() {
+    _fcmSubscription?.cancel();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     super.dispose();

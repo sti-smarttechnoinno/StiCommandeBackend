@@ -83,16 +83,27 @@ class ClientProfileCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      client.name,
-                      style: const TextStyle(
-                        fontSize: 14.5,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary,
-                        letterSpacing: -0.2,
-                      ),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            client.name,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 14.5,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textPrimary,
+                              letterSpacing: -0.2,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        _StatusBadge(status: client.status),
+                      ],
                     ),
-                    const SizedBox(height: 3),
+                    const SizedBox(height: 4),
                     Row(
                       children: [
                         Text(
@@ -121,31 +132,10 @@ class ClientProfileCard extends StatelessWidget {
                           },
                           child: const Icon(
                             Icons.copy_rounded,
-                            size: 12,
+                            size: 13,
                             color: AppColors.textTertiary,
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        _StatusBadge(status: client.status),
-                        if (client.outstandingBalance > 0) ...[
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFFFF1F2),
-                              borderRadius: BorderRadius.circular(6),
-                              border: Border.all(color: const Color(0xFFFECDD3), width: 0.8),
-                            ),
-                            child: Text(
-                              'Impayé: ${_format(client.outstandingBalance)}',
-                              style: const TextStyle(
-                                color: Color(0xFFE11D48),
-                                fontWeight: FontWeight.w700,
-                                fontSize: 10,
-                              ),
-                            ),
-                          ),
-                        ],
                       ],
                     ),
                   ],
@@ -153,6 +143,46 @@ class ClientProfileCard extends StatelessWidget {
               ),
             ],
           ),
+
+          if (client.outstandingBalance > 0) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF1F2),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFFECDD3), width: 0.8),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.warning_amber_rounded,
+                    size: 15,
+                    color: Color(0xFFE11D48),
+                  ),
+                  const SizedBox(width: 6),
+                  const Text(
+                    'Solde impayé :',
+                    style: TextStyle(
+                      color: Color(0xFF9F1239),
+                      fontWeight: FontWeight.w600,
+                      fontSize: 11.5,
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    _format(client.outstandingBalance),
+                    style: const TextStyle(
+                      color: Color(0xFFE11D48),
+                      fontWeight: FontWeight.w800,
+                      fontSize: 12,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
 
           const SizedBox(height: 14),
           // Client Details Column Container
@@ -187,10 +217,17 @@ class ClientProfileCard extends StatelessWidget {
                 ),
                 Divider(height: 10, color: AppColors.border.withAlpha(40)),
                 _InfoRowTile(
-                  icon: Icons.phone_rounded,
-                  label: 'Téléphone',
-                  value: client.phone,
+                  icon: Icons.phone_android_rounded,
+                  label: 'Tél. personnel',
+                  value: client.displayPersonalPhone,
                   color: AppColors.success,
+                ),
+                Divider(height: 10, color: AppColors.border.withAlpha(40)),
+                _InfoRowTile(
+                  icon: Icons.flash_on_rounded,
+                  label: 'N° Storm',
+                  value: client.displayStormPhone,
+                  color: const Color(0xFFE11D48),
                 ),
                 Divider(height: 10, color: AppColors.border.withAlpha(40)),
                 _InfoRowTile(
@@ -208,6 +245,15 @@ class ClientProfileCard extends StatelessWidget {
                       : '0 DA (À jour)',
                   color: client.outstandingBalance > 0 ? AppColors.danger : AppColors.success,
                 ),
+                if (client.lastPaymentDate != null) ...[
+                  Divider(height: 10, color: AppColors.border.withAlpha(40)),
+                  _InfoRowTile(
+                    icon: Icons.event_available_rounded,
+                    label: 'Dernier encaissement',
+                    value: DateFormat('dd/MM/yyyy').format(client.lastPaymentDate!),
+                    color: AppColors.success,
+                  ),
+                ],
                 Divider(height: 10, color: AppColors.border.withAlpha(40)),
                 _InfoRowTile(
                   icon: Icons.calendar_today_rounded,

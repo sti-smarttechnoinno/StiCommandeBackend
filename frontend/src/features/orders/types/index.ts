@@ -5,6 +5,7 @@ export interface ExtendedOrder extends Order {
   priority: 'low' | 'normal' | 'high' | 'urgent';
   deliveryAddress?: string;
   notes?: string;
+  rejectionReason?: string;
   items: OrderItem[];
   isVirtual?: boolean;
   workflowType?: string;

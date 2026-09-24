@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { useTheme } from '@/components/layout/providers';
 import { notificationsService } from '@/services/notifications';
+import { chatService } from '@/services/chat';
 import { useNotificationsStore } from '@/features/notifications/store';
 import { usePermissions } from '@/hooks/use-permissions';
 import { useState, useEffect } from 'react';
@@ -41,6 +42,7 @@ export function Header() {
 
   const refreshKey = useNotificationsStore((s) => s.refreshKey);
   const [unreadCount, setUnreadCount] = useState<number>(0);
+  const [unreadChatCount, setUnreadChatCount] = useState<number>(0);
 
   useEffect(() => {
     if (!user) {
@@ -53,7 +55,30 @@ export function Header() {
       .getKpis()
       .then((res) => setUnreadCount(res.unreadCount))
       .catch(() => setUnreadCount(0));
+
+    chatService
+      .getContacts()
+      .then((res) => setUnreadChatCount(res.total_unread))
+      .catch(() => setUnreadChatCount(0));
   }, [refreshKey]);
+
+  useEffect(() => {
+    const handleWs = (e: Event) => {
+      const data = (e as CustomEvent).detail;
+      if (data?.type === 'CHAT_MESSAGE_SENT') {
+        setUnreadChatCount((prev) => prev + 1);
+      }
+      if (data?.type === 'CHAT_MESSAGES_VIEWED') {
+        chatService
+          .getContacts()
+          .then((res) => setUnreadChatCount(res.total_unread))
+          .catch(() => {});
+      }
+    };
+
+    window.addEventListener('sti-websocket-event', handleWs);
+    return () => window.removeEventListener('sti-websocket-event', handleWs);
+  }, []);
 
   const handleLogout = async () => {
     await logout();
@@ -118,11 +143,19 @@ export function Header() {
           )}
         </Button>
 
-        <Button variant="ghost" size="icon" className="relative text-muted-foreground hover:text-foreground rounded-full h-9 w-9" aria-label="Messages">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="relative text-muted-foreground hover:text-foreground rounded-full h-9 w-9"
+          aria-label="Messages"
+          onClick={() => router.push('/chat')}
+        >
           <MessageSquare className="h-5 w-5" />
-          <span className="absolute top-1 right-1 w-4 h-4 bg-blue-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center ring-2 ring-background">
-            2
-          </span>
+          {unreadChatCount > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 bg-red-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center ring-2 ring-background shadow-xs animate-pulse">
+              {unreadChatCount > 99 ? '99+' : unreadChatCount}
+            </span>
+          )}
         </Button>
 
         <Button

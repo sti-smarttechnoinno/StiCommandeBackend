@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { format } from 'date-fns';
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -9,16 +8,14 @@ import {
   BreadcrumbList,
   BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb';
-import { Calendar, Truck } from 'lucide-react';
+import { Truck } from 'lucide-react';
 import { CreateDeliveryNoteForm } from '@/features/delivery-notes/components/create-delivery-note-form';
 
 export default function NewDeliveryNotePage() {
   const [mounted, setMounted] = useState(false);
-  const [currentDate, setCurrentDate] = useState<string>('');
 
   useEffect(() => {
     setMounted(true);
-    setCurrentDate(format(new Date(), 'EEEE, MMMM d, yyyy'));
   }, []);
 
   if (!mounted) return null;
@@ -63,12 +60,6 @@ export default function NewDeliveryNotePage() {
               </p>
             </div>
           </div>
-        </div>
-
-        {/* Date Badge */}
-        <div className="flex items-center gap-2 text-xs font-semibold text-foreground bg-card/90 backdrop-blur-md px-3.5 py-2 rounded-full border border-border/70 shadow-xs">
-          <Calendar className="h-3.5 w-3.5 text-primary" />
-          <span>{currentDate}</span>
         </div>
       </div>
 

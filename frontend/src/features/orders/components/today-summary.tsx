@@ -19,26 +19,40 @@ export function TodaySummary() {
 
   useEffect(() => {
     let active = true;
-    ordersService.getKpis().then((res) => {
-      if (active && res) {
-        setKpis(res);
-      }
-    }).catch(() => {});
 
-    ordersService.list({ pageSize: 100 }).then((res) => {
-      if (active && res.data) {
-        const items = res.data;
-        setTotalCount(res.total || items.length);
-        setPendingCount(items.filter((o) => o.status === 'pending').length);
-        setValidatedCount(items.filter((o) => o.status === 'validated' || o.status === 'delivered' || o.status === 'processing').length);
-        setCancelledCount(items.filter((o) => o.status === 'cancelled').length);
-        const rev = items.reduce((acc, o) => acc + (o.status !== 'cancelled' ? Number(o.total_amount) : 0), 0);
-        setTotalRevenue(rev);
-      }
-    }).catch(() => {});
+    const loadSummary = () => {
+      ordersService.getKpis().then((res) => {
+        if (active && res) {
+          setKpis(res);
+        }
+      }).catch(() => {});
+
+      ordersService.list({ pageSize: 100 }).then((res) => {
+        if (active && res.data) {
+          const items = res.data;
+          setTotalCount(res.total || items.length);
+          setPendingCount(items.filter((o) => o.status === 'pending').length);
+          setValidatedCount(items.filter((o) => o.status === 'validated' || o.status === 'delivered' || o.status === 'processing').length);
+          setCancelledCount(items.filter((o) => o.status === 'cancelled').length);
+          const rev = items.reduce((acc, o) => acc + (o.status !== 'cancelled' ? Number(o.total_amount) : 0), 0);
+          setTotalRevenue(rev);
+        }
+      }).catch(() => {});
+    };
+
+    loadSummary();
+
+    window.addEventListener('sti-order-updated', loadSummary);
+    window.addEventListener('sti-order-created', loadSummary);
+    window.addEventListener('sti-order-deleted', loadSummary);
+    window.addEventListener('sti-websocket-event', loadSummary);
 
     return () => {
       active = false;
+      window.removeEventListener('sti-order-updated', loadSummary);
+      window.removeEventListener('sti-order-created', loadSummary);
+      window.removeEventListener('sti-order-deleted', loadSummary);
+      window.removeEventListener('sti-websocket-event', loadSummary);
     };
   }, []);
 

@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { toast } from 'sonner';
+import { getApiBaseUrl } from '@/services/api';
 
 export interface DelegateEvent {
   id: string;
@@ -21,6 +22,7 @@ export interface OrderEvent {
     total_amount: number;
     status: string;
     created_at?: string;
+    updated_at?: string;
   };
   delegate?: DelegateEvent;
 }
@@ -74,6 +76,7 @@ interface SharedWebSocketState {
   seenEventIds: Set<string>;
   reconnectTimer: NodeJS.Timeout | null;
   pollTimer: NodeJS.Timeout | null;
+  windowListenersAttached: boolean;
 }
 
 const sharedState: SharedWebSocketState = {
@@ -86,10 +89,38 @@ const sharedState: SharedWebSocketState = {
   seenEventIds: new Set(),
   reconnectTimer: null,
   pollTimer: null,
+  windowListenersAttached: false,
 };
 
 function notifyListeners() {
   sharedState.listeners.forEach((listener) => listener());
+}
+
+/**
+ * Authoritative count fetcher from the backend.
+ * Reconciles the exact number of pending/unvalidated orders.
+ */
+export async function fetchUnvalidatedCountGlobal() {
+  try {
+    const apiBaseUrl = typeof window !== 'undefined' ? getApiBaseUrl() : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api');
+    const headers: Record<string, string> = {
+      Accept: 'application/json',
+    };
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('access_token');
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+    }
+    const res = await fetch(`${apiBaseUrl}/orders?status=pending&pageSize=1`, { headers });
+    if (res.ok) {
+      const data = await res.json();
+      if (typeof data.total === 'number') {
+        sharedState.unvalidatedCount = data.total;
+        notifyListeners();
+      }
+    }
+  } catch (_) {}
 }
 
 function handleSharedOrderEvent(data: OrderEvent) {
@@ -100,16 +131,33 @@ function handleSharedOrderEvent(data: OrderEvent) {
   }
 
   if (data.order) {
-    const eventId = String(data.order.id || data.order.order_code || `${Date.now()}-${Math.random()}`);
-    if (sharedState.seenEventIds.has(eventId)) return;
-    sharedState.seenEventIds.add(eventId);
+    const eventKey = `${data.type}-${data.order.id || data.order.order_code}-${data.order.status || ''}-${data.order.created_at || ''}`;
+    if (sharedState.seenEventIds.has(eventKey)) return;
+    sharedState.seenEventIds.add(eventKey);
 
-    if (data.type === 'ORDER_CREATED' || data.type === 'ORDER_STATUS_CHANGED') {
+    // Limit memory consumption
+    if (sharedState.seenEventIds.size > 300) {
+      const arr = Array.from(sharedState.seenEventIds);
+      arr.slice(0, 150).forEach((k) => sharedState.seenEventIds.delete(k));
+    }
+
+    if (data.type === 'ORDER_CREATED') {
       if (data.order.status === 'pending') {
         sharedState.unvalidatedCount += 1;
-      } else if (sharedState.unvalidatedCount > 0) {
-        sharedState.unvalidatedCount -= 1;
       }
+      fetchUnvalidatedCountGlobal();
+    } else if (
+      data.type === 'ORDER_UPDATED' ||
+      data.type === 'ORDER_STATUS_CHANGED' ||
+      data.type === 'ORDER_VALIDATED' ||
+      data.type === 'ORDER_DELETED'
+    ) {
+      if (data.order.status && data.order.status !== 'pending' && sharedState.unvalidatedCount > 0) {
+        sharedState.unvalidatedCount = Math.max(0, sharedState.unvalidatedCount - 1);
+      } else if (data.order.status === 'pending') {
+        sharedState.unvalidatedCount += 1;
+      }
+      fetchUnvalidatedCountGlobal();
     }
 
     sharedState.lastEvent = data;
@@ -130,13 +178,63 @@ function handleSharedOrderEvent(data: OrderEvent) {
   }
 }
 
+function attachWindowListeners() {
+  if (typeof window === 'undefined' || sharedState.windowListenersAttached) return;
+  sharedState.windowListenersAttached = true;
+
+  const handleLocalOrderChange = (e: Event) => {
+    const detail = (e as CustomEvent).detail;
+    if (detail?.status && detail.status !== 'pending' && sharedState.unvalidatedCount > 0) {
+      sharedState.unvalidatedCount = Math.max(0, sharedState.unvalidatedCount - 1);
+      notifyListeners();
+    } else if (detail?.status === 'pending') {
+      sharedState.unvalidatedCount += 1;
+      notifyListeners();
+    }
+    fetchUnvalidatedCountGlobal();
+  };
+
+  window.addEventListener('sti-order-updated', handleLocalOrderChange);
+  window.addEventListener('sti-order-created', handleLocalOrderChange);
+  window.addEventListener('sti-order-deleted', handleLocalOrderChange);
+
+  window.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      fetchUnvalidatedCountGlobal();
+    }
+  });
+
+  window.addEventListener('focus', () => {
+    fetchUnvalidatedCountGlobal();
+  });
+}
+
 function initSharedWebSocket() {
   if (typeof window === 'undefined') return;
+
+  attachWindowListeners();
+
+  // Periodic fallback sync every 30 seconds
+  if (!sharedState.pollTimer) {
+    sharedState.pollTimer = setInterval(fetchUnvalidatedCountGlobal, 30000);
+  }
+
   if (sharedState.socket && (sharedState.socket.readyState === WebSocket.OPEN || sharedState.socket.readyState === WebSocket.CONNECTING)) {
     return;
   }
 
-  const wsCustomUrl = process.env.NEXT_PUBLIC_WEBSOCKET_URL || 'ws://localhost:8085';
+  const getWsUrl = () => {
+    if (typeof window !== 'undefined') {
+      const hostname = window.location.hostname;
+      if (hostname && hostname !== 'localhost' && hostname !== '127.0.0.1') {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        return `${protocol}//${hostname}:8085`;
+      }
+    }
+    return process.env.NEXT_PUBLIC_WEBSOCKET_URL || 'ws://localhost:8085';
+  };
+
+  const wsCustomUrl = getWsUrl();
 
   try {
     const ws = new WebSocket(wsCustomUrl);
@@ -145,16 +243,16 @@ function initSharedWebSocket() {
     ws.onopen = () => {
       sharedState.isConnected = true;
       notifyListeners();
-      if (sharedState.pollTimer) {
-        clearInterval(sharedState.pollTimer);
-        sharedState.pollTimer = null;
-      }
+      fetchUnvalidatedCountGlobal();
     };
 
     ws.onmessage = (event) => {
       try {
-        const data: OrderEvent = JSON.parse(event.data);
+        const data = JSON.parse(event.data);
         handleSharedOrderEvent(data);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('sti-websocket-event', { detail: data }));
+        }
       } catch (_) {}
     };
 
@@ -180,18 +278,8 @@ function initSharedWebSocket() {
 export function useWebSocketOrders() {
   const [, setTick] = useState(0);
 
-  const fetchUnvalidatedCount = useCallback(async () => {
-    try {
-      const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
-      const res = await fetch(`${apiBaseUrl}/orders?status=pending&pageSize=1`);
-      if (res.ok) {
-        const data = await res.json();
-        if (typeof data.total === 'number') {
-          sharedState.unvalidatedCount = data.total;
-          notifyListeners();
-        }
-      }
-    } catch (_) {}
+  const refreshCount = useCallback(async () => {
+    await fetchUnvalidatedCountGlobal();
   }, []);
 
   useEffect(() => {
@@ -199,23 +287,23 @@ export function useWebSocketOrders() {
     const listener = () => setTick((t) => t + 1);
     sharedState.listeners.add(listener);
 
-    // Initialize singleton socket (only 1 socket across all components)
+    // Initialize singleton socket and window listeners
     initSharedWebSocket();
 
     if (sharedState.unvalidatedCount === 0) {
-      fetchUnvalidatedCount();
+      fetchUnvalidatedCountGlobal();
     }
 
     return () => {
       sharedState.listeners.delete(listener);
     };
-  }, [fetchUnvalidatedCount]);
+  }, []);
 
   return {
     unvalidatedCount: sharedState.unvalidatedCount,
     lastEvent: sharedState.lastEvent,
     lastDelegateEvent: sharedState.lastDelegateEvent,
     isConnected: sharedState.isConnected,
-    refreshCount: fetchUnvalidatedCount,
+    refreshCount,
   };
 }

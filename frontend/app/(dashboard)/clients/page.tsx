@@ -123,7 +123,7 @@ export default function ClientsPage() {
       {/* Full Width Combined Filter & Table Component */}
       <div className="w-full space-y-4">
         <ClientsTable key={`table-${tableKey}`} />
-        <BottomToolbar />
+        <BottomToolbar onSuccess={handleRefresh} />
       </div>
 
       {/* Bottom Section: Operations & Analytics Summary (3 Column Grid Full Width) */}

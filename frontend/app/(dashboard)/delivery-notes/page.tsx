@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/breadcrumb';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
-import { Calendar, Download, RefreshCw, Truck, Plus } from 'lucide-react';
+import { Download, RefreshCw, Truck, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { DeliveryNotesKPICards } from '@/features/delivery-notes/components/delivery-notes-kpi-cards';
 import { DeliveryNotesFilters } from '@/features/delivery-notes/components/delivery-notes-filters';
@@ -23,7 +23,6 @@ import type { DeliveryNoteData } from '@/features/delivery-notes/types';
 
 export default function DeliveryNotesPage() {
   const [mounted, setMounted] = useState(false);
-  const [currentDate, setCurrentDate] = useState<string>('');
   const [refreshKey, setRefreshKey] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -68,7 +67,6 @@ export default function DeliveryNotesPage() {
 
   useEffect(() => {
     setMounted(true);
-    setCurrentDate(format(new Date(), 'EEEE, MMMM d, yyyy'));
   }, []);
 
   useEffect(() => {
@@ -177,12 +175,6 @@ export default function DeliveryNotesPage() {
 
         {/* Action Toolbar */}
         <div className="flex items-center gap-2.5 flex-wrap">
-          {/* Date Badge */}
-          <div className="flex items-center gap-2 text-xs font-semibold text-foreground bg-card/90 backdrop-blur-md px-3.5 py-2 rounded-full border border-border/70 shadow-xs">
-            <Calendar className="h-3.5 w-3.5 text-primary" />
-            <span>{currentDate}</span>
-          </div>
-
           {/* Export Button */}
           <Button
             variant="outline"

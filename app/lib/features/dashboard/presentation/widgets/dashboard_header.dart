@@ -7,6 +7,7 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../auth/presentation/controller/auth_provider.dart';
 import '../../../notifications/presentation/providers/notifications_provider.dart';
+import '../../../chat/presentation/providers/chat_provider.dart';
 
 class DashboardHeader extends ConsumerWidget {
   const DashboardHeader({super.key});
@@ -18,6 +19,7 @@ class DashboardHeader extends ConsumerWidget {
     final role = authState.user?['role'] as String? ?? 'Délégué';
     final region = authState.user?['region'] as String? ?? '';
     final unreadCount = ref.watch(unreadCountProvider);
+    final unreadChatCount = ref.watch(chatUnreadCountProvider);
 
     return SliverToBoxAdapter(
       child: Padding(
@@ -86,6 +88,29 @@ class DashboardHeader extends ConsumerWidget {
                   .fadeIn(delay: 80.ms, duration: 300.ms)
                   .slideX(begin: -0.05, end: 0),
             ),
+
+            // Missions & Tasks Icon
+            _IconBubble(
+              icon: Icons.task_alt_rounded,
+              onTap: () => context.push('/tasks'),
+            )
+                .animate()
+                .fadeIn(delay: 110.ms, duration: 300.ms)
+                .slideX(begin: 0.05, end: 0),
+
+            const SizedBox(width: AppConstants.sm),
+
+            // Chat Bubble Icon
+            _IconBubble(
+              icon: Icons.chat_bubble_outline_rounded,
+              badgeCount: unreadChatCount,
+              onTap: () => context.push('/chat'),
+            )
+                .animate()
+                .fadeIn(delay: 130.ms, duration: 300.ms)
+                .slideX(begin: 0.05, end: 0),
+
+            const SizedBox(width: AppConstants.sm),
 
             // Notification Bubble
             _IconBubble(

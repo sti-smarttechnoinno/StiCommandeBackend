@@ -15,6 +15,12 @@ class QuickActionsCard extends StatelessWidget {
         onTap: () => context.push('/orders'),
       ),
       _ActionItem(
+        icon: Icons.task_alt_rounded,
+        label: 'Mes Missions',
+        color: const Color(0xFFD71920),
+        onTap: () => context.push('/tasks'),
+      ),
+      _ActionItem(
         icon: Icons.people_rounded,
         label: 'Mes Clients',
         color: AppColors.info,

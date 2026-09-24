@@ -98,6 +98,7 @@ export default function EncaissementsPage() {
   const [modeFilter, setModeFilter] = useState<string>('all');
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
+  const [onlyLast, setOnlyLast] = useState<boolean>(false);
   const [sortBy, setSortBy] = useState<string>('payment_date');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
@@ -130,6 +131,7 @@ export default function EncaissementsPage() {
         payment_mode: modeFilter !== 'all' ? modeFilter : undefined,
         date_from: dateFrom || undefined,
         date_to: dateTo || undefined,
+        only_last: onlyLast ? true : undefined,
         sortBy,
         sortDir,
       });
@@ -146,7 +148,7 @@ export default function EncaissementsPage() {
       setLoading(false);
       setIsRefreshing(false);
     }
-  }, [page, pageSize, typeFilter, search, accountFilter, modeFilter, dateFrom, dateTo, sortBy, sortDir]);
+  }, [page, pageSize, typeFilter, search, accountFilter, modeFilter, dateFrom, dateTo, onlyLast, sortBy, sortDir]);
 
   useEffect(() => {
     fetchData();
@@ -521,6 +523,22 @@ export default function EncaissementsPage() {
                 >
                   <ArrowUpRight className="h-3 w-3" />
                   <span>Décaissements ({kpis.decaissementsCount})</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setOnlyLast(!onlyLast);
+                    setPage(1);
+                  }}
+                  className={cn(
+                    'px-3 py-1 text-xs font-semibold rounded-full transition-all flex items-center gap-1.5 cursor-pointer ml-auto sm:ml-2',
+                    onlyLast
+                      ? 'bg-amber-500 text-white shadow-xs font-bold'
+                      : 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/20'
+                  )}
+                >
+                  <Receipt className="h-3 w-3" />
+                  <span>Derniers règlements uniquement</span>
                 </button>
               </div>
             </div>

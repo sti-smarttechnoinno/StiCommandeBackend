@@ -5,12 +5,14 @@ export type SortField = 'rank' | 'name' | 'region' | 'clients' | 'orders' | 'mon
 export type SortDirection = 'asc' | 'desc';
 
 export interface WilayaDelegate {
+  id?: string;
   name: string;
   phone: string;
-  email: string;
+  email?: string;
   avatar: string;
   isOnline: boolean;
   role: string;
+  region?: string;
 }
 
 export interface WilayaRow {
@@ -21,6 +23,7 @@ export interface WilayaRow {
   regionName: string;
   rank: number;
   delegate: WilayaDelegate | null;
+  delegates?: WilayaDelegate[];
   clients: number;
   activeClients: number;
   ordersToday: number;

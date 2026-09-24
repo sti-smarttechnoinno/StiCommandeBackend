@@ -33,7 +33,7 @@ const ICON_THEMES = {
 
 function formatValue(val: number, prefix: string, suffix: string) {
   if (val >= 1000000) return prefix + (val / 1000000).toFixed(1).replace(/\.0$/, '') + 'M' + suffix;
-  if (val >= 1000) return prefix + val.toLocaleString('en-US') + suffix;
+  if (val >= 1000) return prefix + val.toLocaleString('fr-FR') + suffix;
   return prefix + String(val) + suffix;
 }
 
@@ -112,7 +112,7 @@ export function KPICard({
             </span>
           ) : (
             <span className="text-[11px] font-medium text-muted-foreground">
-              {subtitle || 'Real-time'}
+              {subtitle || 'En temps réel'}
             </span>
           )}
         </div>
