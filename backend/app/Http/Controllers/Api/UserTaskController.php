@@ -74,6 +74,20 @@ class UserTaskController extends Controller
             $query->where('is_private', filter_var($request->query('is_private'), FILTER_VALIDATE_BOOLEAN));
         }
 
+        // Clone base query to compute full statistics across all statuses accurately
+        $statsTasks = (clone $query)->get(['id', 'status', 'is_private', 'assigned_to', 'has_attachment']);
+        $stats = [
+            'total' => $statsTasks->count(),
+            'pending' => $statsTasks->where('status', 'pending')->count(),
+            'in_progress' => $statsTasks->where('status', 'in_progress')->count(),
+            'completed' => $statsTasks->where('status', 'completed')->count(),
+            'validated' => $statsTasks->where('status', 'validated')->count(),
+            'problem' => $statsTasks->where('status', 'problem')->count(),
+            'cancelled' => $statsTasks->where('status', 'cancelled')->count(),
+            'private_count' => $statsTasks->where('is_private', true)->where('assigned_to', $currentUser->id)->count(),
+            'with_attachment' => $statsTasks->where('has_attachment', true)->count(),
+        ];
+
         // Additional filters
         if ($request->query('status') && $request->query('status') !== 'all') {
             $query->where('status', $request->query('status'));
@@ -148,19 +162,6 @@ class UserTaskController extends Controller
                 ],
             ];
         });
-
-        // Summary counts for quick statistics
-        $stats = [
-            'total' => $tasks->count(),
-            'pending' => $tasks->where('status', 'pending')->count(),
-            'in_progress' => $tasks->where('status', 'in_progress')->count(),
-            'completed' => $tasks->where('status', 'completed')->count(),
-            'validated' => $tasks->where('status', 'validated')->count(),
-            'problem' => $tasks->where('status', 'problem')->count(),
-            'cancelled' => $tasks->where('status', 'cancelled')->count(),
-            'private_count' => $tasks->where('is_private', true)->where('assigned_to', $currentUser->id)->count(),
-            'with_attachment' => $tasks->where('has_attachment', true)->count(),
-        ];
 
         return response()->json([
             'tasks' => $data,
