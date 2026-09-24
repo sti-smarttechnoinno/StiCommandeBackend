@@ -22,6 +22,7 @@ class Order extends Model
         'status',
         'payment_method',
         'notes',
+        'rejection_reason',
     ];
 
     protected $casts = [

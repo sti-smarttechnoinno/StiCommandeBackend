@@ -386,7 +386,21 @@ class DeliveryNoteController extends Controller
                 }
                 $newStatus = $allValidated ? 'validated' : 'partially_validated';
                 if ($order->status !== 'delivered') {
+                    $oldStatus = $order->status;
                     $order->update(['status' => $newStatus]);
+
+                    if ($oldStatus !== $newStatus) {
+                        try {
+                            app(\App\Services\OrderNotificationService::class)->notifyOrderStatusChanged(
+                                $order,
+                                $newStatus,
+                                $oldStatus,
+                                $request->user()
+                            );
+                        } catch (\Throwable $e) {
+                            \Illuminate\Support\Facades\Log::warning("Order notification error from DeliveryNoteController: " . $e->getMessage());
+                        }
+                    }
                 }
             }
 

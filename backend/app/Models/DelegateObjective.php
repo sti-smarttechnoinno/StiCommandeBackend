@@ -12,6 +12,7 @@ class DelegateObjective extends Model
 
     protected $fillable = [
         'user_id',
+        'assigned_by',
         'year',
         'month',
         'target_revenue',
@@ -33,5 +34,10 @@ class DelegateObjective extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class, 'user_id');
+    }
+
+    public function assignedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'assigned_by');
     }
 }

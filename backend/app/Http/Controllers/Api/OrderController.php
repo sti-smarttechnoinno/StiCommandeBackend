@@ -334,13 +334,13 @@ class OrderController extends Controller
      */
     public function show($id)
     {
-        // Enforce UUID only: commande numbers/codes are not accepted as route IDs
-        if (!\Illuminate\Support\Str::isUuid($id)) {
-            return response()->json(['message' => 'Order not found. Only order UUID is accepted.'], 404);
-        }
-
         $order = Order::with(['items.product', 'client', 'delegate', 'validationLogs'])
-            ->where('id', $id)
+            ->where(function ($q) use ($id) {
+                if (\Illuminate\Support\Str::isUuid($id)) {
+                    $q->where('id', $id);
+                }
+                $q->orWhere('order_code', $id);
+            })
             ->first();
 
         if (!$order) {
@@ -648,9 +648,12 @@ class OrderController extends Controller
             return response()->json(['message' => 'Commande introuvable.'], 404);
         }
 
+        $initialStatus = $order->status;
+
         $request->validate([
-            'status' => 'nullable|string|in:pending,validated,partially_validated,processing,delivered,cancelled',
+            'status' => 'nullable|string|in:pending,validated,partially_validated,processing,delivered,cancelled,rejected',
             'notes' => 'nullable|string',
+            'rejection_reason' => 'nullable|string',
             'client_id' => 'nullable|string',
             'client_name' => 'nullable|string',
             'delivery_address' => 'nullable|string',
@@ -799,7 +802,29 @@ class OrderController extends Controller
             }
 
             if ($request->has('status')) {
-                $order->status = $request->input('status');
+                $newStatus = $request->input('status');
+                $oldStatus = $order->status;
+
+                // If transition to rejected or cancelled from an active status, restore product stock
+                if (in_array($newStatus, ['rejected', 'cancelled']) && !in_array($oldStatus, ['rejected', 'cancelled'])) {
+                    foreach ($order->items as $item) {
+                        if (!empty($item->product_id)) {
+                            $prod = Product::find($item->product_id);
+                            if ($prod && ($prod->track_stock ?? true) && !is_null($prod->stock_quantity)) {
+                                $prod->increment('stock_quantity', $item->quantity);
+                                if ($prod->total_sold !== null && $prod->total_sold > 0) {
+                                    $prod->decrement('total_sold', min($item->quantity, $prod->total_sold));
+                                }
+                            }
+                        }
+                    }
+                }
+
+                $order->status = $newStatus;
+            }
+
+            if ($request->has('rejection_reason')) {
+                $order->rejection_reason = $request->input('rejection_reason');
             }
 
             if ($request->has('notes')) {
@@ -808,6 +833,20 @@ class OrderController extends Controller
 
             $order->save();
             DB::commit();
+
+            // Notify assigned delegate and mobile app via FCM push if status transitioned
+            if ($initialStatus !== $order->status) {
+                try {
+                    app(\App\Services\OrderNotificationService::class)->notifyOrderStatusChanged(
+                        $order,
+                        $order->status,
+                        $initialStatus,
+                        $user
+                    );
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::warning("Order status push notification error: " . $e->getMessage());
+                }
+            }
 
             // Broadcast real-time order update event to WebSocket Hub
             try {

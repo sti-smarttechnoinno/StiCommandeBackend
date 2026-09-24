@@ -21,6 +21,8 @@ use App\Http\Controllers\Api\DeliveryNoteController;
 use App\Http\Controllers\Api\EncaissementController;
 use App\Http\Controllers\Api\SalesJournalController;
 use App\Http\Controllers\Api\ChatController;
+use App\Http\Controllers\Api\UserObjectiveController;
+use App\Http\Controllers\Api\UserTaskController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/auth/login', [AuthController::class, 'login']);
@@ -35,6 +37,17 @@ Route::get('/delegates/{delegate}/objectives', [DelegateObjectiveController::cla
 Route::post('/delegates/{delegate}/objectives', [DelegateObjectiveController::class, 'storeOrUpdate']);
 Route::get('/clients/{client}/objectives', [ClientObjectiveController::class, 'index']);
 Route::post('/clients/{client}/objectives', [ClientObjectiveController::class, 'storeOrUpdate']);
+
+// User Objectives & Tasks (Public & Auth fallback)
+Route::get('/objectives/assignable-users', [UserObjectiveController::class, 'assignableUsers']);
+Route::get('/objectives', [UserObjectiveController::class, 'index']);
+Route::post('/objectives/batch-assign', [UserObjectiveController::class, 'batchAssign']);
+Route::get('/tasks/history', [UserTaskController::class, 'history']);
+Route::get('/tasks', [UserTaskController::class, 'index']);
+Route::post('/tasks', [UserTaskController::class, 'store']);
+Route::get('/tasks/{id}', [UserTaskController::class, 'show']);
+Route::put('/tasks/{id}/status', [UserTaskController::class, 'updateStatus']);
+Route::delete('/tasks/{id}', [UserTaskController::class, 'destroy']);
 
 // Reports routes (Public / Auth)
 Route::get('/reports/kpis', [ReportController::class, 'kpis']);
@@ -219,4 +232,15 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/conversations/{id}/read', [ChatController::class, 'markAsRead']);
         Route::post('/presence/ping', [ChatController::class, 'pingPresence']);
     });
+
+    // Hierarchical Objectives & User Tasks (Authenticated)
+    Route::get('/objectives/assignable-users', [UserObjectiveController::class, 'assignableUsers']);
+    Route::get('/objectives', [UserObjectiveController::class, 'index']);
+    Route::post('/objectives/batch-assign', [UserObjectiveController::class, 'batchAssign']);
+    Route::get('/tasks/history', [UserTaskController::class, 'history']);
+    Route::get('/tasks', [UserTaskController::class, 'index']);
+    Route::post('/tasks', [UserTaskController::class, 'store']);
+    Route::get('/tasks/{id}', [UserTaskController::class, 'show']);
+    Route::put('/tasks/{id}/status', [UserTaskController::class, 'updateStatus']);
+    Route::delete('/tasks/{id}', [UserTaskController::class, 'destroy']);
 });

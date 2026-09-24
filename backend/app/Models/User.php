@@ -65,6 +65,21 @@ class User extends Authenticatable
         return $this->hasMany(DelegateObjective::class, 'user_id');
     }
 
+    public function objectivesAssignedByMe()
+    {
+        return $this->hasMany(DelegateObjective::class, 'assigned_by');
+    }
+
+    public function tasksAssignedToMe()
+    {
+        return $this->hasMany(UserTask::class, 'assigned_to');
+    }
+
+    public function tasksCreatedByMe()
+    {
+        return $this->hasMany(UserTask::class, 'assigned_by');
+    }
+
     public function roleModel()
     {
         return $this->belongsTo(Role::class, 'role', 'slug');
