@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { format } from 'date-fns';
+import { fr } from 'date-fns/locale';
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -18,11 +19,11 @@ export default function EditOrderPage() {
   const params = useParams();
   const id = (params?.id as string) || '';
   const [mounted, setMounted] = useState(false);
-  const [currentDate, setCurrentDate] = useState<string>('Friday, July 31, 2026');
+  const [currentDate, setCurrentDate] = useState<string>('');
 
   useEffect(() => {
     setMounted(true);
-    setCurrentDate(format(new Date(), 'EEEE, MMMM d, yyyy'));
+    setCurrentDate(format(new Date(), 'EEEE d MMMM yyyy', { locale: fr }));
   }, []);
 
   if (!mounted) return null;
@@ -37,13 +38,13 @@ export default function EditOrderPage() {
               <BreadcrumbList>
                 <BreadcrumbItem>
                   <BreadcrumbLink href="/dashboard" className="text-muted-foreground text-xs hover:text-foreground transition-colors">
-                    Home
+                    Accueil
                   </BreadcrumbLink>
                 </BreadcrumbItem>
                 <BreadcrumbSeparator />
                 <BreadcrumbItem>
                   <BreadcrumbLink href="/orders" className="text-muted-foreground text-xs capitalize hover:text-foreground transition-colors">
-                    Orders
+                    Commandes
                   </BreadcrumbLink>
                 </BreadcrumbItem>
                 <BreadcrumbSeparator />
@@ -55,7 +56,7 @@ export default function EditOrderPage() {
                 <BreadcrumbSeparator />
                 <BreadcrumbItem>
                   <BreadcrumbLink href={`/orders/${id}/edit`} className="text-foreground text-xs font-semibold capitalize">
-                    Edit
+                    Modifier
                   </BreadcrumbLink>
                 </BreadcrumbItem>
               </BreadcrumbList>
@@ -67,10 +68,10 @@ export default function EditOrderPage() {
               </div>
               <div>
                 <h1 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight">
-                  Edit Order #{id.length > 8 ? id.slice(0, 8) : id}
+                  Modifier la commande #{id.length > 8 ? id.slice(0, 8) : id}
                 </h1>
                 <p className="text-sm text-muted-foreground">
-                  Update customer information, line items, payment terms, and delivery instructions.
+                  Mettez à jour les informations client, articles commandés, modalités de paiement et instructions de livraison.
                 </p>
               </div>
             </div>
@@ -79,7 +80,7 @@ export default function EditOrderPage() {
           {/* Date Badge */}
           <div className="flex items-center gap-2 text-xs font-semibold text-foreground bg-card/90 backdrop-blur-md px-3.5 py-2 rounded-full border border-border/70 shadow-xs">
             <Calendar className="h-3.5 w-3.5 text-primary" />
-            <span>{currentDate}</span>
+            <span className="capitalize">{currentDate}</span>
           </div>
         </div>
 

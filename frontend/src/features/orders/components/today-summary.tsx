@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import { formatCurrency } from '../utils';
 import { ShoppingCart, DollarSign, Clock, CheckCircle, XCircle, TrendingUp, BarChart3 } from 'lucide-react';
 import { ordersService, type OrderKpis, type OrderData } from '@/services/orders';
+import { useOrdersStore } from '../store';
 
 export function TodaySummary() {
   const [kpis, setKpis] = useState<OrderKpis | null>(null);
@@ -16,18 +17,20 @@ export function TodaySummary() {
   const [validatedCount, setValidatedCount] = useState(0);
   const [cancelledCount, setCancelledCount] = useState(0);
   const [totalRevenue, setTotalRevenue] = useState(0);
+  const selectedRegions = useOrdersStore((s) => s.filters.region);
 
   useEffect(() => {
     let active = true;
 
     const loadSummary = () => {
-      ordersService.getKpis().then((res) => {
+      const regionParam = selectedRegions.length === 1 ? selectedRegions[0] : undefined;
+      ordersService.getKpis(regionParam ? { region: regionParam } : undefined).then((res) => {
         if (active && res) {
           setKpis(res);
         }
       }).catch(() => {});
 
-      ordersService.list({ pageSize: 100 }).then((res) => {
+      ordersService.list({ pageSize: 100, region: regionParam }).then((res) => {
         if (active && res.data) {
           const items = res.data;
           setTotalCount(res.total || items.length);
@@ -54,7 +57,7 @@ export function TodaySummary() {
       window.removeEventListener('sti-order-deleted', loadSummary);
       window.removeEventListener('sti-websocket-event', loadSummary);
     };
-  }, []);
+  }, [selectedRegions]);
 
   const total = kpis?.totalOrders ?? totalCount;
   const revenue = kpis?.totalRevenue ?? totalRevenue;
@@ -81,9 +84,9 @@ export function TodaySummary() {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <CardTitle className="text-base font-bold tracking-tight">Today&apos;s Summary</CardTitle>
+              <CardTitle className="text-base font-bold tracking-tight">Résumé du jour</CardTitle>
               <Badge variant="secondary" className="rounded-full text-xs font-semibold px-2 py-0.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-none">
-                Live DB
+                En direct
               </Badge>
             </div>
             <CardDescription className="text-xs text-muted-foreground mt-0.5">

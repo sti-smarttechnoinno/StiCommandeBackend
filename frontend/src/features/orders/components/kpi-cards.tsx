@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import { ShoppingCart, DollarSign, Clock, Users, TrendingUp, TrendingDown, AlertTriangle, Loader2 } from 'lucide-react';
 import { Sparkline } from '@/components/charts/sparkline';
 import { ordersService, type OrderKpis } from '@/services/orders';
+import { useOrdersStore } from '../store';
 
 interface KPIData {
   title: string;
@@ -29,7 +30,7 @@ const ICON_THEMES = {
 
 function formatValue(val: number, prefix: string, suffix: string) {
   if (val >= 1000000) return prefix + (val / 1000000).toFixed(1).replace(/\.0$/, '') + 'M' + suffix;
-  if (val >= 1000) return prefix + val.toLocaleString('en-US') + suffix;
+  if (val >= 1000) return prefix + val.toLocaleString('fr-FR') + suffix;
   return prefix + String(val) + suffix;
 }
 
@@ -76,13 +77,15 @@ function CountUp({ target, suffix = '', prefix = '' }: { target: number; suffix?
 export function KPICards() {
   const [liveKpis, setLiveKpis] = useState<OrderKpis | null>(null);
   const [loading, setLoading] = useState(true);
+  const selectedRegions = useOrdersStore((s) => s.filters.region);
 
   useEffect(() => {
     let active = true;
 
     const loadKpis = () => {
+      const regionParam = selectedRegions.length === 1 ? selectedRegions[0] : undefined;
       ordersService
-        .getKpis()
+        .getKpis(regionParam ? { region: regionParam } : undefined)
         .then((data) => {
           if (active) {
             setLiveKpis(data);
@@ -108,7 +111,7 @@ export function KPICards() {
       window.removeEventListener('sti-order-deleted', loadKpis);
       window.removeEventListener('sti-websocket-event', loadKpis);
     };
-  }, []);
+  }, [selectedRegions]);
 
   if (loading) {
     return (
@@ -124,7 +127,7 @@ export function KPICards() {
 
   const kpiList: KPIData[] = [
     {
-      title: "Total Orders",
+      title: "Total Commandes",
       value: liveKpis?.totalOrders ?? 0,
       change: liveKpis?.ordersGrowth ?? 0,
       icon: <ShoppingCart className="h-5 w-5" />,
@@ -133,7 +136,7 @@ export function KPICards() {
       sparkline: liveKpis?.ordersSparkline,
     },
     {
-      title: "Total Revenue",
+      title: "Chiffre d'Affaires Total",
       value: liveKpis?.totalRevenue ?? 0,
       prefix: '',
       suffix: ' DA',
@@ -144,7 +147,7 @@ export function KPICards() {
       sparkline: liveKpis?.revenueSparkline,
     },
     {
-      title: 'Pending Orders',
+      title: 'Commandes en Attente',
       value: liveKpis?.pendingOrders ?? 0,
       change: liveKpis?.pendingGrowth ?? 0,
       icon: <Clock className="h-5 w-5" />,
@@ -153,7 +156,7 @@ export function KPICards() {
       sparkline: liveKpis?.pendingSparkline,
     },
     {
-      title: 'Validated Orders',
+      title: 'Commandes Validées',
       value: liveKpis?.validatedOrders ?? 0,
       change: liveKpis?.validatedGrowth ?? 0,
       icon: <Users className="h-5 w-5" />,
@@ -162,7 +165,7 @@ export function KPICards() {
       sparkline: liveKpis?.validatedSparkline,
     },
     {
-      title: 'Delivered Orders',
+      title: 'Commandes Livrées',
       value: liveKpis?.deliveredOrders ?? 0,
       change: liveKpis?.deliveredGrowth ?? 0,
       icon: <AlertTriangle className="h-5 w-5" />,

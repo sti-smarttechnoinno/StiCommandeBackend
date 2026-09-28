@@ -75,6 +75,8 @@ class RoleController extends Controller
                     ['key' => 'clients.create', 'label' => 'Créer des clients', 'description' => 'Ajouter de nouveaux points de vente'],
                     ['key' => 'clients.update', 'label' => 'Modifier les fiches clients', 'description' => 'Mise à jour des coordonnées et plafonds de crédit'],
                     ['key' => 'clients.delete', 'label' => 'Supprimer des clients', 'description' => 'Désactiver ou supprimer des comptes clients'],
+                    ['key' => 'clients.update_solde', 'label' => 'Mettre à jour les soldes (Recouvrement)', 'description' => 'Importer et synchroniser les soldes et créances des clients'],
+                    ['key' => 'clients.update_encaissement', 'label' => 'Mettre à jour les encaissements', 'description' => 'Importer et synchroniser le journal des encaissements et règlements'],
                 ],
             ],
             [

@@ -159,7 +159,7 @@ class EncaissementController extends Controller
     public function importPreview(Request $request, \App\Services\EncaissementImportService $importService): JsonResponse
     {
         $user = auth('sanctum')->user() ?: $request->user();
-        if ($user && !$user->hasPermission('clients.edit') && !$user->hasPermission('clients.create') && !in_array($user->role, ['admin', 'superadmin'])) {
+        if ($user && !$user->hasPermission('clients.update_encaissement') && !$user->hasPermission('encaissements.manage') && !in_array($user->role, ['admin', 'superadmin'])) {
             return response()->json([
                 'message' => "Accès non autorisé : vous ne disposez pas des droits requis pour importer des encaissements."
             ], 403);
@@ -212,6 +212,13 @@ class EncaissementController extends Controller
      */
     public function importVerify(Request $request, \App\Services\EncaissementImportService $importService): JsonResponse
     {
+        $user = auth('sanctum')->user() ?: $request->user();
+        if ($user && !$user->hasPermission('clients.update_encaissement') && !$user->hasPermission('encaissements.manage') && !in_array($user->role, ['admin', 'superadmin'])) {
+            return response()->json([
+                'message' => "Accès non autorisé : vous ne disposez pas des droits requis pour importer des encaissements."
+            ], 403);
+        }
+
         $request->validate([
             'file_token' => 'required|string',
             'mapping' => 'required|array',
@@ -242,13 +249,18 @@ class EncaissementController extends Controller
      */
     public function importExecute(Request $request, \App\Services\EncaissementImportService $importService): JsonResponse
     {
+        $user = auth('sanctum')->user() ?: $request->user();
+        if ($user && !$user->hasPermission('clients.update_encaissement') && !$user->hasPermission('encaissements.manage') && !in_array($user->role, ['admin', 'superadmin'])) {
+            return response()->json([
+                'message' => "Accès non autorisé : vous ne disposez pas des droits requis pour importer des encaissements."
+            ], 403);
+        }
+
         $request->validate([
             'file_token' => 'required|string',
             'mapping' => 'required|array',
             'unmatched_action' => 'nullable|string|in:link_only,create,skip',
         ]);
-
-        $user = auth('sanctum')->user() ?: $request->user();
 
         try {
             $data = $importService->execute(

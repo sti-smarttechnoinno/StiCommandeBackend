@@ -575,7 +575,7 @@ export function OrderExpandedRow({ order, onUpdateStatus, onRejectOrder }: Order
                   "text-[11px] font-bold px-2 py-0.5 capitalize",
                   isRejected ? "bg-rose-500/10 text-rose-600 border-rose-500/30" : isFullyCompleted ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30" : isCurrentlyPartial ? "bg-amber-500/10 text-amber-600 border-amber-500/30" : "bg-slate-500/10 text-slate-600 border-slate-500/30"
                 )}>
-                  {isRejected ? 'Rejetée' : isFullyCompleted ? 'Validée (Totale)' : isCurrentlyPartial ? 'Validée (Partielle)' : orderStatus}
+                  {isRejected ? 'Rejetée' : isFullyCompleted ? 'Validée (Totale)' : isCurrentlyPartial ? 'Validée (Partielle)' : orderStatus === 'pending' ? 'En attente' : orderStatus === 'processing' ? 'En préparation' : orderStatus}
                 </Badge>
               </div>
             </CardContent>

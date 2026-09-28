@@ -61,6 +61,16 @@ class Wilaya extends Model
         return $this->belongsToMany(Region::class, 'region_wilaya');
     }
 
+    public function region(): BelongsToMany
+    {
+        return $this->regions();
+    }
+
+    public function customRegion(): BelongsTo
+    {
+        return $this->belongsTo(Region::class, 'custom_region_id');
+    }
+
     public static array $defaultRegions = [
         '01' => ['id' => 'south', 'name' => 'South'],
         '02' => ['id' => 'center', 'name' => 'Center'],

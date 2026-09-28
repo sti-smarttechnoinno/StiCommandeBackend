@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
+import { fr } from 'date-fns/locale';
 import { ShoppingCart, CheckCircle, XCircle, Package, User, Activity, Radio, RefreshCw } from 'lucide-react';
 import { ordersService, type OrderData } from '@/services/orders';
 
@@ -80,10 +81,10 @@ export function LiveActivity() {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <CardTitle className="text-base font-bold tracking-tight">Live Activity</CardTitle>
+              <CardTitle className="text-base font-bold tracking-tight">Activité en direct</CardTitle>
               <Badge variant="secondary" className="rounded-full text-xs font-semibold px-2 py-0.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-none gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                Live Stream
+                Flux en direct
               </Badge>
             </div>
             <CardDescription className="text-xs text-muted-foreground mt-0.5">
@@ -121,7 +122,7 @@ export function LiveActivity() {
                         {activity.message}
                       </span>
                       <span className="text-[10px] font-medium text-muted-foreground flex-shrink-0">
-                        {formatDistanceToNow(new Date(activity.timestamp), { addSuffix: true })}
+                        {formatDistanceToNow(new Date(activity.timestamp), { addSuffix: true, locale: fr })}
                       </span>
                     </div>
                     <p className="text-[11px] text-muted-foreground truncate mt-0.5">
@@ -142,7 +143,7 @@ export function LiveActivity() {
         {/* Card Footer */}
         <div className="pt-2 border-t border-border/30 flex items-center justify-between text-[11px] text-muted-foreground px-1">
           <span className="flex items-center gap-1.5">
-            <Radio className="h-3 w-3 text-emerald-500 animate-pulse" /> Auto-syncing DB
+            <Radio className="h-3 w-3 text-emerald-500 animate-pulse" /> Synchronisation auto DB
           </span>
           <span className="font-semibold text-foreground font-mono">{activities.length} Événements DB</span>
         </div>

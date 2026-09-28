@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
+import { fr } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
 import {
   Breadcrumb,
@@ -26,18 +27,18 @@ export default function OrdersPage() {
   const router = useRouter();
   const { can } = usePermissions();
   const [mounted, setMounted] = useState(false);
-  const [currentDate, setCurrentDate] = useState<string>('Tuesday, July 29, 2026');
+  const [currentDate, setCurrentDate] = useState<string>('');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     setMounted(true);
-    setCurrentDate(format(new Date(), 'EEEE, MMMM d, yyyy'));
+    setCurrentDate(format(new Date(), 'EEEE d MMMM yyyy', { locale: fr }));
   }, []);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
-    toast.info('Refreshing orders data...');
+    toast.info('Actualisation des données commandes...');
     setRefreshKey((prev) => prev + 1);
     setTimeout(() => setIsRefreshing(false), 800);
   };
@@ -53,29 +54,29 @@ export default function OrdersPage() {
             <BreadcrumbList>
               <BreadcrumbItem>
                 <BreadcrumbLink href="/dashboard" className="text-muted-foreground text-xs hover:text-foreground transition-colors">
-                  Home
+                  Accueil
                 </BreadcrumbLink>
               </BreadcrumbItem>
               <BreadcrumbSeparator />
               <BreadcrumbItem>
                 <BreadcrumbLink href="/orders" className="text-muted-foreground text-xs capitalize hover:text-foreground transition-colors">
-                  orders
+                  Commandes
                 </BreadcrumbLink>
               </BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>
           <h1 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight">
-            Orders Management
+            Gestion des commandes
           </h1>
           <p className="text-sm text-muted-foreground">
-            Track, manage, and fulfill all distribution orders across regions.
+            Suivez, gérez et traitez l&apos;ensemble des commandes de distribution à travers les régions.
           </p>
         </div>
 
         {/* Action Toolbar */}
         <div className="flex items-center gap-2.5 flex-wrap">
           {/* Date Badge */}
-          <div className="flex items-center gap-2 text-xs font-semibold text-foreground bg-card/90 backdrop-blur-md px-3.5 py-2 rounded-full border border-border/70 shadow-xs">
+          <div className="flex items-center gap-2 text-xs font-semibold text-foreground bg-card/90 backdrop-blur-md px-3.5 py-2 rounded-full border border-border/70 shadow-xs capitalize">
             <Calendar className="h-3.5 w-3.5 text-primary" />
             <span>{currentDate}</span>
           </div>
@@ -84,11 +85,11 @@ export default function OrdersPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => toast.info('Exporting report...')}
+            onClick={() => toast.info('Exportation du rapport...')}
             className="gap-2 rounded-full h-9 px-4 font-semibold text-xs bg-card hover:bg-muted/80 text-foreground border-border/70 shadow-xs hover:shadow-sm transition-all duration-200"
           >
             <Download className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
-            <span>Export</span>
+            <span>Exporter</span>
           </Button>
 
           {/* Refresh Button */}
@@ -99,7 +100,7 @@ export default function OrdersPage() {
             className="gap-2 rounded-full h-9 px-4 font-semibold text-xs bg-card hover:bg-muted/80 text-foreground border-border/70 shadow-xs hover:shadow-sm transition-all duration-200"
           >
             <RefreshCw className={cn("h-3.5 w-3.5 text-amber-500 transition-transform duration-700", isRefreshing && "animate-spin")} />
-            <span>Refresh</span>
+            <span>Actualiser</span>
           </Button>
 
           {/* New Order Primary Button (Visible only if user has orders.create) */}
@@ -110,7 +111,7 @@ export default function OrdersPage() {
               className="gap-2 rounded-full h-9 px-4 font-bold text-xs bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary text-primary-foreground shadow-md shadow-primary/20 hover:shadow-lg hover:shadow-primary/30 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
             >
               <Plus className="h-3.5 w-3.5 text-primary-foreground" />
-              <span>New Order</span>
+              <span>Nouvelle commande</span>
             </Button>
           )}
         </div>
@@ -127,7 +128,7 @@ export default function OrdersPage() {
 
       {/* Bottom Section: Operations & Activity Summary (3 Column Grid Full Width) */}
       <div className="space-y-4 pt-4 border-t border-border/40">
-        <h2 className="text-lg font-bold text-foreground tracking-tight">Operations & Activity Summary</h2>
+        <h2 className="text-lg font-bold text-foreground tracking-tight">Opérations & résumé d&apos;activité</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5 items-stretch">
           <TodaySummary />
           <ApprovalQueue />

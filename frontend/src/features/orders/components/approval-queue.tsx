@@ -99,9 +99,9 @@ export function ApprovalQueue() {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <CardTitle className="text-base font-bold tracking-tight">Approval Queue</CardTitle>
+              <CardTitle className="text-base font-bold tracking-tight">File de validation</CardTitle>
               <Badge variant="secondary" className="rounded-full text-xs font-semibold px-2 py-0.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-none">
-                {orders.length} Pending
+                {orders.length} En attente
               </Badge>
             </div>
             <CardDescription className="text-xs text-muted-foreground mt-0.5">
@@ -125,7 +125,7 @@ export function ApprovalQueue() {
                       type="button"
                       onClick={() => router.push(`/orders/${order.id}`)}
                       className="font-mono text-xs font-bold text-primary bg-primary/10 hover:bg-primary/20 px-2 py-0.5 rounded-md transition-colors text-left cursor-pointer"
-                      title="View order details"
+                      title="Voir les détails de la commande"
                     >
                       {order.orderCode}
                     </button>
@@ -147,7 +147,7 @@ export function ApprovalQueue() {
                     size="sm"
                     onClick={() => router.push(`/orders/${order.id}`)}
                     className="h-8 w-8 p-0 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted"
-                    title="View order"
+                    title="Voir la commande"
                   >
                     <Eye className="h-3.5 w-3.5" />
                   </Button>
@@ -157,7 +157,7 @@ export function ApprovalQueue() {
                     size="sm"
                     onClick={() => handleReject(order.id, order.orderCode)}
                     className="h-8 w-8 p-0 rounded-lg text-rose-600 border-rose-500/30 hover:bg-rose-500/10"
-                    title="Reject Order"
+                    title="Rejeter la commande"
                   >
                     <X className="h-4 w-4" />
                   </Button>
@@ -166,7 +166,7 @@ export function ApprovalQueue() {
                     size="sm"
                     onClick={() => handleApprove(order.id, order.orderCode)}
                     className="h-8 px-2.5 rounded-lg text-xs font-semibold gap-1 bg-emerald-600 hover:bg-emerald-700 text-white"
-                    title="Approve Order"
+                    title="Valider la commande"
                   >
                     <Check className="h-3.5 w-3.5" />
                     <span>Valider</span>

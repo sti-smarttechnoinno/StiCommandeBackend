@@ -49,7 +49,7 @@ export function OrderActions({
         >
           <Eye className="h-3.5 w-3.5" />
         </TooltipTrigger>
-        <TooltipContent>View order</TooltipContent>
+        <TooltipContent>Voir la commande</TooltipContent>
       </Tooltip>
 
       <Tooltip>
@@ -60,7 +60,7 @@ export function OrderActions({
         >
           <Pencil className="h-3.5 w-3.5" />
         </TooltipTrigger>
-        <TooltipContent>Edit order</TooltipContent>
+        <TooltipContent>Modifier la commande</TooltipContent>
       </Tooltip>
 
       {(status === 'pending' || status === 'partially_validated') && (

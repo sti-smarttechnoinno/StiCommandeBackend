@@ -118,8 +118,8 @@ export const ordersService = {
     return res.data;
   },
 
-  getKpis: async (): Promise<OrderKpis> => {
-    const res = await api.get<OrderKpis>('/orders/kpis');
+  getKpis: async (params?: { region?: string; delegate_id?: string }): Promise<OrderKpis> => {
+    const res = await api.get<OrderKpis>('/orders/kpis', { params });
     return res.data;
   },
 

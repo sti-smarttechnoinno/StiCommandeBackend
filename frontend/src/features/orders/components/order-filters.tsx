@@ -25,13 +25,13 @@ import { Search, Filter, X, ChevronDown, Calendar } from 'lucide-react';
 import type { OrderStatus } from '@/types';
 
 const STATUS_OPTIONS: { value: OrderStatus; label: string }[] = [
-  { value: 'pending', label: 'Pending' },
-  { value: 'validated', label: 'Validated' },
-  { value: 'partially_validated', label: 'Partially Validated' },
-  { value: 'preparing', label: 'Preparing' },
-  { value: 'delivered', label: 'Delivered' },
-  { value: 'rejected', label: 'Rejected' },
-  { value: 'cancelled', label: 'Cancelled' },
+  { value: 'pending', label: 'En attente' },
+  { value: 'validated', label: 'Validée' },
+  { value: 'partially_validated', label: 'Partiellement validée' },
+  { value: 'preparing', label: 'En préparation' },
+  { value: 'delivered', label: 'Livrée' },
+  { value: 'rejected', label: 'Rejetée' },
+  { value: 'cancelled', label: 'Annulée' },
 ];
 
 interface FilterDropdownProps {
@@ -78,18 +78,18 @@ function FilterDropdown({ label, options, selected, onToggle, onClear, isLoading
                 className="rounded-lg cursor-pointer text-xs text-primary"
                 onSelect={(e) => e.preventDefault()}
               >
-                Clear all
+                Tout effacer
               </DropdownMenuCheckboxItem>
               <DropdownMenuSeparator />
             </>
           )}
           {isLoading ? (
             <div className="px-2 py-3 text-center text-xs text-muted-foreground">
-              Loading {label.toLowerCase()}...
+              Chargement...
             </div>
           ) : options.length === 0 ? (
             <div className="px-2 py-3 text-center text-xs text-muted-foreground">
-              No {label.toLowerCase()} found
+              Aucun résultat
             </div>
           ) : (
             options.map((opt) => (
@@ -156,7 +156,7 @@ export function OrderFilters() {
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <Input
-            placeholder="Search orders, clients, delegates..."
+            placeholder="Rechercher commandes, clients, délégués..."
             value={filters.search}
             onChange={(e) => setFilter('search', e.target.value)}
             className="pl-9 pr-3 h-8 text-xs rounded-full bg-muted/50 border-border/60"
@@ -173,7 +173,7 @@ export function OrderFilters() {
 
         {/* Status Filter */}
         <FilterDropdown
-          label="Status"
+          label="Statut"
           options={STATUS_OPTIONS}
           selected={filters.status}
           onToggle={(v) => toggleArrayFilter('status', v)}
@@ -182,7 +182,7 @@ export function OrderFilters() {
 
         {/* Region Filter */}
         <FilterDropdown
-          label="Region"
+          label="Région"
           options={realRegions.map((r) => ({ value: r, label: r }))}
           selected={filters.region}
           onToggle={(v) => toggleArrayFilter('region', v)}
@@ -204,15 +204,15 @@ export function OrderFilters() {
               )}
             >
               <Calendar className="h-3 w-3" />
-              Date Range
+              Période
             </Button>
           </PopoverTrigger>
           <PopoverContent align="start" className="w-72 rounded-xl p-4">
             <div className="space-y-3">
-              <p className="text-xs font-semibold text-foreground">Date Range</p>
+              <p className="text-xs font-semibold text-foreground">Période</p>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-[10px] font-medium text-muted-foreground uppercase">From</label>
+                  <label className="text-[10px] font-medium text-muted-foreground uppercase">Du</label>
                   <Input
                     type="date"
                     value={filters.dateRange.start ? filters.dateRange.start.toISOString().split('T')[0] : ''}
@@ -226,7 +226,7 @@ export function OrderFilters() {
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] font-medium text-muted-foreground uppercase">To</label>
+                  <label className="text-[10px] font-medium text-muted-foreground uppercase">Au</label>
                   <Input
                     type="date"
                     value={filters.dateRange.end ? filters.dateRange.end.toISOString().split('T')[0] : ''}
@@ -250,7 +250,7 @@ export function OrderFilters() {
                     setDateOpen(false);
                   }}
                 >
-                  Clear
+                  Effacer
                 </Button>
               </div>
             </div>
@@ -266,7 +266,7 @@ export function OrderFilters() {
             onClick={resetFilters}
           >
             <X className="h-3 w-3" />
-            Clear ({activeFilterCount})
+            Effacer ({activeFilterCount})
           </Button>
         )}
       </div>

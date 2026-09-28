@@ -252,12 +252,12 @@ export function OrdersTable() {
   }, [allSelected, allPageIds, selectAll, clearSelection]);
 
   const handleBulkApprove = () => {
-    toast.success(`${selectedIds.size} orders approved`);
+    toast.success(`${selectedIds.size} commande(s) approuvée(s)`);
     clearSelection();
   };
 
   const handleBulkDelete = () => {
-    toast.error(`${selectedIds.size} orders deleted`);
+    toast.error(`${selectedIds.size} commande(s) supprimée(s)`);
     clearSelection();
   };
 
@@ -316,7 +316,7 @@ export function OrdersTable() {
             className="flex items-center gap-1 hover:text-foreground transition-colors font-bold"
             onClick={() => handleSort('orderNumber')}
           >
-            Order ID
+            N° Commande
             {sort.field === 'orderNumber' ? (
               sort.direction === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
             ) : (
@@ -380,7 +380,7 @@ export function OrdersTable() {
       },
       {
         accessorKey: 'delegateName',
-        header: 'Delegate',
+        header: 'Délégué',
         cell: ({ row }) => {
           const delegateName =
             row.original.delegateName && row.original.delegateName.toLowerCase() !== 'unassigned'
@@ -402,7 +402,7 @@ export function OrdersTable() {
       },
       {
         accessorKey: 'region',
-        header: 'Region',
+        header: 'Région',
         cell: ({ row }) => (
           <span className="text-xs text-muted-foreground font-medium bg-muted/60 px-2 py-0.5 rounded-md">
             {row.original.region}
@@ -412,17 +412,17 @@ export function OrdersTable() {
       },
       {
         accessorKey: 'items',
-        header: 'Items',
+        header: 'Articles',
         cell: ({ row }) => (
           <span className="text-xs text-muted-foreground font-medium">
-            {row.original.items.length} {row.original.items.length === 1 ? 'item' : 'items'}
+            {row.original.items.length} {row.original.items.length <= 1 ? 'article' : 'articles'}
           </span>
         ),
         size: 80,
       },
       {
         accessorKey: 'quantity',
-        header: 'Quantity',
+        header: 'Quantité',
         cell: ({ row }) => {
           const totalQty = (row.original.items || []).reduce((sum, item) => sum + (item.quantity || 0), 0);
           return (
@@ -440,7 +440,7 @@ export function OrdersTable() {
             className="flex items-center gap-1 hover:text-foreground transition-colors font-bold"
             onClick={() => handleSort('status')}
           >
-            Status
+            Statut
             {sort.field === 'status' ? (
               sort.direction === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
             ) : (
@@ -453,7 +453,7 @@ export function OrdersTable() {
       },
       {
         accessorKey: 'priority',
-        header: 'Priority',
+        header: 'Priorité',
         cell: ({ row }) => <OrderPriorityBadge priority={row.original.priority} />,
         size: 90,
       },
@@ -493,9 +493,9 @@ export function OrdersTable() {
               toast.info(`Validation de la commande ${row.original.orderNumber} : vérifiez les quantités et validez ci-dessous.`);
             }}
             onReject={(id) => setRejectModalOrder(row.original)}
-            onPrint={(id) => toast.info(`Printing order ${id}`)}
-            onDelete={(id) => toast.success(`Order ${id} deleted`)}
-            onDuplicate={(id) => toast.info(`Duplicating order ${id}`)}
+            onPrint={(id) => toast.info(`Impression de la commande ${id}...`)}
+            onDelete={(id) => toast.success(`Commande ${id} supprimée`)}
+            onDuplicate={(id) => toast.info(`Duplication de la commande ${id}...`)}
           />
         ),
         size: 120,
@@ -534,14 +534,14 @@ export function OrdersTable() {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <CardTitle className="text-base font-bold tracking-tight">Orders List</CardTitle>
+                <CardTitle className="text-base font-bold tracking-tight">Liste des commandes</CardTitle>
                 <Badge variant="secondary" className="rounded-full text-xs font-semibold px-2.5 py-0.5 gap-1.5 flex items-center">
                   {loading && <Loader2 className="h-3 w-3 text-primary animate-spin" />}
-                  <span>{processedData.length} Orders</span>
+                  <span>{processedData.length} Commandes</span>
                 </Badge>
               </div>
               <CardDescription className="text-xs text-muted-foreground mt-0.5">
-                Search, filter, and manage all orders in real time
+                Recherchez, filtrez et gérez toutes les commandes en temps réel
               </CardDescription>
             </div>
           </div>
@@ -557,23 +557,23 @@ export function OrdersTable() {
       {selectedIds.size > 0 && (
         <div className="flex items-center justify-between px-4 py-2.5 bg-primary/5 border-b border-primary/10">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-primary">{selectedIds.size} selected</span>
+            <span className="text-xs font-semibold text-primary">{selectedIds.size} sélectionné(s)</span>
             <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground hover:text-foreground" onClick={clearSelection}>
-              Clear
+              Effacer
             </Button>
           </div>
           <div className="flex items-center gap-1.5">
             <Button variant="ghost" size="sm" className="h-7 px-3 text-xs font-medium gap-1.5 text-emerald-600 hover:bg-emerald-500/10" onClick={handleBulkApprove}>
-              Approve All
+              Tout approuver
             </Button>
-            <Button variant="ghost" size="sm" className="h-7 px-3 text-xs font-medium gap-1.5" onClick={() => toast.info('Exporting...')}>
-              <Download className="h-3 w-3" /> Export
+            <Button variant="ghost" size="sm" className="h-7 px-3 text-xs font-medium gap-1.5" onClick={() => toast.info('Exportation...')}>
+              <Download className="h-3 w-3" /> Exporter
             </Button>
-            <Button variant="ghost" size="sm" className="h-7 px-3 text-xs font-medium gap-1.5" onClick={() => toast.info('Printing...')}>
-              <Printer className="h-3 w-3" /> Print
+            <Button variant="ghost" size="sm" className="h-7 px-3 text-xs font-medium gap-1.5" onClick={() => toast.info('Impression...')}>
+              <Printer className="h-3 w-3" /> Imprimer
             </Button>
             <Button variant="ghost" size="sm" className="h-7 px-3 text-xs font-medium gap-1.5 text-destructive hover:bg-destructive/10" onClick={handleBulkDelete}>
-              <Trash2 className="h-3 w-3" /> Delete
+              <Trash2 className="h-3 w-3" /> Supprimer
             </Button>
           </div>
         </div>
@@ -607,8 +607,8 @@ export function OrdersTable() {
                         <Loader2 className="h-6 w-6 animate-spin" />
                       </div>
                       <div className="space-y-0.5">
-                        <p className="text-xs font-bold text-foreground">Fetching orders directory...</p>
-                        <p className="text-[11px] text-muted-foreground">Loading order transactions and distribution records</p>
+                        <p className="text-xs font-bold text-foreground">Chargement du répertoire des commandes...</p>
+                        <p className="text-[11px] text-muted-foreground">Chargement des transactions et des enregistrements de distribution</p>
                       </div>
                     </div>
                   </TableCell>
@@ -680,7 +680,7 @@ export function OrdersTable() {
               ) : (
                 <TableRow>
                   <TableCell colSpan={columns.length} className="h-28 text-center text-muted-foreground text-xs">
-                    No orders found matching your filters.
+                    Aucune commande ne correspond à vos filtres.
                   </TableCell>
                 </TableRow>
               )}
@@ -691,15 +691,15 @@ export function OrdersTable() {
         {/* Pagination Footer */}
         <div className="flex items-center justify-between px-4 py-3.5 border-t border-border/30 text-xs">
           <span className="text-muted-foreground">
-            Showing{' '}
+            Affichage de{' '}
             <strong className="text-foreground font-semibold">
               {page * pageSize + 1}
             </strong>{' '}
-            to{' '}
+            à{' '}
             <strong className="text-foreground font-semibold">
               {Math.min((page + 1) * pageSize, processedData.length)}
             </strong>{' '}
-            of <strong className="text-foreground font-semibold">{processedData.length}</strong> orders
+            sur <strong className="text-foreground font-semibold">{processedData.length}</strong> commandes
           </span>
 
           <div className="flex items-center gap-1">
@@ -710,7 +710,7 @@ export function OrdersTable() {
               onClick={() => table.previousPage()}
               disabled={!table.getCanPreviousPage()}
             >
-              <ChevronLeft className="h-3.5 w-3.5" /> Prev
+              <ChevronLeft className="h-3.5 w-3.5" /> Préc
             </Button>
 
             <div className="flex items-center gap-1 mx-1">
@@ -751,7 +751,7 @@ export function OrdersTable() {
               onClick={() => table.nextPage()}
               disabled={!table.getCanNextPage()}
             >
-              Next <ChevronRight className="h-3.5 w-3.5" />
+              Suiv <ChevronRight className="h-3.5 w-3.5" />
             </Button>
           </div>
         </div>

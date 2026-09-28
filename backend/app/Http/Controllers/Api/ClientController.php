@@ -601,16 +601,16 @@ class ClientController extends Controller
                 });
         }
 
-        $topDelegatesQuery = User::whereIn('role', ['delegate', 'commercial', 'delegue']);
+        $topDelegatesQuery = User::whereIn('users.role', ['delegate', 'commercial', 'delegue']);
         if ($authUser && $authUser->isRestrictedByRegion()) {
             if (!empty($authUser->region)) {
                 $reg = strtolower(trim($authUser->region));
                 $topDelegatesQuery->where(function ($q) use ($authUser, $reg) {
-                    $q->whereRaw('LOWER(TRIM(region)) = ?', [$reg])
-                      ->orWhere('id', $authUser->id);
+                    $q->whereRaw('LOWER(TRIM(users.region)) = ?', [$reg])
+                      ->orWhere('users.id', $authUser->id);
                 });
             } else {
-                $topDelegatesQuery->where('id', $authUser->id);
+                $topDelegatesQuery->where('users.id', $authUser->id);
             }
         }
 
@@ -893,7 +893,7 @@ class ClientController extends Controller
     public function importEncaissements(Request $request, \App\Services\EncaissementImportService $importService): JsonResponse
     {
         $user = auth('sanctum')->user() ?: $request->user();
-        if ($user && !$user->hasPermission('clients.edit') && !$user->hasPermission('clients.create') && !in_array($user->role, ['admin', 'superadmin'])) {
+        if ($user && !$user->hasPermission('clients.update_encaissement') && !$user->hasPermission('encaissements.manage') && !in_array($user->role, ['admin', 'superadmin'])) {
             return response()->json([
                 'message' => "Accès non autorisé : vous ne disposez pas des droits requis pour importer des encaissements."
             ], 403);
@@ -955,9 +955,9 @@ class ClientController extends Controller
     public function importRecouvrement(Request $request, \App\Services\RecouvrementParserService $parserService): JsonResponse
     {
         $user = auth('sanctum')->user() ?: $request->user();
-        if ($user && !$user->hasPermission('clients.edit') && !$user->hasPermission('clients.create') && !in_array($user->role, ['admin', 'superadmin'])) {
+        if ($user && !$user->hasPermission('clients.update_solde') && !in_array($user->role, ['admin', 'superadmin'])) {
             return response()->json([
-                'message' => "Acc├¿s non autoris├® : vous ne disposez pas des droits requis pour importer des soldes clients."
+                'message' => "Accès non autorisé : vous ne disposez pas des droits requis pour importer des soldes clients."
             ], 403);
         }
 

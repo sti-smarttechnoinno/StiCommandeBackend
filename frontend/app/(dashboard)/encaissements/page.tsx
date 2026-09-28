@@ -24,6 +24,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { ImportEncaissementsDialog } from '@/features/clients/components/import-encaissements-dialog';
+import { usePermissions } from '@/hooks/use-permissions';
 import {
   encaissementsService,
   EncaissementRecord,
@@ -71,6 +72,8 @@ const ICON_THEMES = {
 } as const;
 
 export default function EncaissementsPage() {
+  const { can } = usePermissions();
+  const canUpdateEncaissement = can('clients.update_encaissement');
   const [mounted, setMounted] = useState(false);
   const [currentDate, setCurrentDate] = useState<string>('Friday, July 31, 2026');
   const [records, setRecords] = useState<EncaissementRecord[]>([]);
@@ -268,13 +271,15 @@ export default function EncaissementsPage() {
             <span>{currentDate}</span>
           </div>
 
-          {/* Import Encaissements Dialog */}
-          <ImportEncaissementsDialog
-            lastImportAt={lastImportAt}
-            onSuccess={() => {
-              fetchData();
-            }}
-          />
+          {/* Import Encaissements Dialog (Role Permission Dependent) */}
+          {canUpdateEncaissement && (
+            <ImportEncaissementsDialog
+              lastImportAt={lastImportAt}
+              onSuccess={() => {
+                fetchData();
+              }}
+            />
+          )}
 
           {/* Export Button */}
           <Button

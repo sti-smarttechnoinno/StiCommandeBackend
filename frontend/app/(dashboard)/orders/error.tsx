@@ -23,9 +23,9 @@ export default function OrdersError({
           <div className="w-14 h-14 rounded-2xl bg-rose-500/10 flex items-center justify-center mx-auto mb-4">
             <AlertTriangle className="h-7 w-7 text-rose-500" />
           </div>
-          <h3 className="text-lg font-bold text-foreground mb-2">Something went wrong</h3>
+          <h3 className="text-lg font-bold text-foreground mb-2">Une erreur est survenue</h3>
           <p className="text-sm text-muted-foreground mb-6">
-            Failed to load orders data. Please try again.
+            Impossible de charger les données des commandes. Veuillez réessayer.
           </p>
           {error.message && (
             <p className="text-xs text-muted-foreground bg-muted/50 rounded-lg p-3 mb-6 font-mono">
@@ -37,7 +37,7 @@ export default function OrdersError({
             className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-full px-6"
           >
             <RefreshCw className="h-4 w-4 mr-2" />
-            Try Again
+            Réessayer
           </Button>
         </CardContent>
       </Card>

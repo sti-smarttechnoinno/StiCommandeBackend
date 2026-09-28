@@ -170,25 +170,140 @@ class User extends Authenticatable
         if ($this->isAdmin()) {
             return false;
         }
-        if ($this->role === 'commercial' || $this->role === 'delegate') {
+        if (in_array(strtolower($this->role ?? ''), ['commercial', 'delegate', 'delegue'])) {
             return true;
         }
         return (bool) ($this->roleModel?->has_region_restriction ?? false);
     }
 
+    public function getAssignedRegions(): array
+    {
+        $regions = [];
+
+        // 1. Direct regions from $this->region (handles single or comma-separated tokens)
+        if (!empty($this->region)) {
+            $tokens = array_filter(array_map('trim', explode(',', $this->region)));
+            foreach ($tokens as $token) {
+                $regions[] = $token;
+                $low = strtolower($token);
+
+                $matched = Region::whereRaw('LOWER(TRIM(name)) = ?', [$low])
+                    ->orWhereRaw('LOWER(TRIM(code)) = ?', [$low])
+                    ->orWhereRaw('LOWER(TRIM(name_fr)) = ?', [$low])
+                    ->get();
+
+                foreach ($matched as $r) {
+                    $regions[] = $r->name;
+                    if ($r->code) $regions[] = $r->code;
+                    if ($r->name_fr) $regions[] = $r->name_fr;
+                }
+            }
+        }
+
+        // 2. Regions derived from assigned wilayas (if user has $this->wilaya)
+        if (!empty($this->wilaya)) {
+            $wTokens = array_filter(array_map('trim', explode(',', $this->wilaya)));
+            foreach ($wTokens as $wToken) {
+                $pureName = trim(preg_replace('/^\d+\s*-\s*/', '', $wToken));
+                $code = preg_match('/^(\d+)/', $wToken, $m) ? str_pad($m[1], 2, '0', STR_PAD_LEFT) : null;
+
+                $wQuery = Wilaya::query();
+                if ($code) {
+                    $wQuery->where('code', $code);
+                } else {
+                    $wQuery->whereRaw('LOWER(TRIM(name)) = ?', [strtolower($pureName)]);
+                }
+                $foundWilayas = $wQuery->with('regions')->get();
+                foreach ($foundWilayas as $fw) {
+                    if ($fw->region_name) $regions[] = $fw->region_name;
+                    if ($fw->region_id) $regions[] = $fw->region_id;
+                    foreach ($fw->regions as $r) {
+                        $regions[] = $r->name;
+                        if ($r->code) $regions[] = $r->code;
+                    }
+                }
+            }
+        }
+
+        // 3. For any regions matched, also include their default regional aliases
+        if (!empty($regions)) {
+            $lowRegions = array_unique(array_map('strtolower', array_map('trim', $regions)));
+            $regModels = Region::where(function ($q) use ($lowRegions) {
+                foreach ($lowRegions as $lr) {
+                    $q->orWhereRaw('LOWER(TRIM(name)) = ?', [$lr])
+                      ->orWhereRaw('LOWER(TRIM(code)) = ?', [$lr]);
+                }
+            })->with('wilayas')->get();
+
+            foreach ($regModels as $rm) {
+                $regions[] = $rm->name;
+                if ($rm->code) $regions[] = $rm->code;
+                if ($rm->name_fr) $regions[] = $rm->name_fr;
+                foreach ($rm->wilayas as $w) {
+                    if ($w->region_name) $regions[] = $w->region_name;
+                    if ($w->region_id) $regions[] = $w->region_id;
+                }
+            }
+        }
+
+        return array_values(array_unique(array_filter(array_map('trim', $regions))));
+    }
+
     public function getAssignedRegionWilayas(): array
     {
+        $wilayaList = [];
+
+        // 1. Direct wilayas from $this->wilaya
         if (!empty($this->wilaya)) {
-            return array_map('trim', explode(',', $this->wilaya));
+            $rawTokens = array_filter(array_map('trim', explode(',', $this->wilaya)));
+            foreach ($rawTokens as $t) {
+                $wilayaList[] = $t;
+                $pure = trim(preg_replace('/^\d+\s*-\s*/', '', $t));
+                if (!empty($pure)) $wilayaList[] = $pure;
+                if (preg_match('/^(\d+)/', $t, $m)) {
+                    $wilayaList[] = $m[1];
+                    $wilayaList[] = str_pad($m[1], 2, '0', STR_PAD_LEFT);
+                }
+            }
         }
 
-        if (!empty($this->region)) {
-            $regionName = strtolower(trim($this->region));
-            return Wilaya::whereHas('region', function ($q) use ($regionName) {
-                $q->whereRaw('LOWER(TRIM(name)) = ?', [$regionName]);
-            })->pluck('name')->toArray();
+        // 2. Wilayas belonging to any of the user's assigned regions
+        $assignedRegions = $this->getAssignedRegions();
+        if (!empty($assignedRegions)) {
+            $lowRegions = array_unique(array_map('strtolower', array_map('trim', $assignedRegions)));
+
+            $matchedRegionIds = Region::where(function ($q) use ($lowRegions) {
+                foreach ($lowRegions as $lr) {
+                    $q->orWhereRaw('LOWER(TRIM(name)) = ?', [$lr])
+                      ->orWhereRaw('LOWER(TRIM(code)) = ?', [$lr])
+                      ->orWhereRaw('LOWER(TRIM(name_fr)) = ?', [$lr]);
+                }
+            })->pluck('id')->toArray();
+
+            $wilayasFromRegions = Wilaya::query()
+                ->where(function ($query) use ($lowRegions, $matchedRegionIds) {
+                    foreach ($lowRegions as $lr) {
+                        $query->orWhereRaw('LOWER(TRIM(region_name)) = ?', [$lr])
+                              ->orWhereRaw('LOWER(TRIM(region_id)) = ?', [$lr]);
+                    }
+
+                    if (!empty($matchedRegionIds)) {
+                        $query->orWhereIn('custom_region_id', $matchedRegionIds)
+                              ->orWhereHas('regions', function ($rq) use ($matchedRegionIds) {
+                                  $rq->whereIn('regions.id', $matchedRegionIds);
+                              });
+                    }
+                })
+                ->get();
+
+            foreach ($wilayasFromRegions as $w) {
+                $wilayaList[] = $w->name;
+                $wilayaList[] = $w->code;
+                $wilayaList[] = "{$w->code} - {$w->name}";
+                $wilayaList[] = ((int)$w->code) . " - {$w->name}";
+            }
         }
 
-        return [];
+        return array_values(array_unique(array_filter(array_map('trim', $wilayaList))));
     }
 }

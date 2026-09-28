@@ -61,27 +61,50 @@ class Order extends Model
         }
 
         $table = $this->getTable();
-        $region = strtolower(trim($user->region ?? ''));
+        $regions = method_exists($user, 'getAssignedRegions') ? $user->getAssignedRegions() : [];
+        if (empty($regions) && !empty($user->region)) {
+            $regions = array_filter(array_map('trim', explode(',', $user->region)));
+        }
+        $lowRegions = array_values(array_unique(array_filter(array_map('strtolower', array_map('trim', $regions)))));
+
         $wilayas = method_exists($user, 'getAssignedRegionWilayas') ? $user->getAssignedRegionWilayas() : [];
         $userId = $user->id;
 
-        return $query->where(function ($q) use ($table, $region, $wilayas, $userId) {
+        return $query->where(function ($q) use ($table, $lowRegions, $wilayas, $userId, $user) {
             $hasCondition = false;
 
             if ($userId) {
-                $q->where("{$table}.delegate_id", $userId);
+                $q->where(function ($sub) use ($table, $userId, $user) {
+                    $sub->where("{$table}.delegate_id", $userId);
+                    if (!empty($user->name)) {
+                        $sub->orWhere("{$table}.delegate_name", $user->name);
+                    }
+                });
                 $hasCondition = true;
             }
 
-            if (!empty($region)) {
-                $method = $hasCondition ? 'orWhereRaw' : 'whereRaw';
-                $q->$method("LOWER(TRIM({$table}.region)) = ?", [$region]);
+            if (!empty($lowRegions)) {
+                $method = $hasCondition ? 'orWhere' : 'where';
+                $q->$method(function ($sub) use ($table, $lowRegions) {
+                    foreach ($lowRegions as $idx => $r) {
+                        if ($idx === 0) {
+                            $sub->whereRaw("LOWER(TRIM({$table}.region)) = ?", [$r]);
+                        } else {
+                            $sub->orWhereRaw("LOWER(TRIM({$table}.region)) = ?", [$r]);
+                        }
+                    }
+                });
                 $hasCondition = true;
             }
 
             if (!empty($wilayas)) {
-                $method = $hasCondition ? 'orWhereIn' : 'whereIn';
-                $q->$method("{$table}.wilaya", $wilayas);
+                $method = $hasCondition ? 'orWhere' : 'where';
+                $q->$method(function ($sub) use ($table, $wilayas) {
+                    $sub->whereIn("{$table}.wilaya", $wilayas);
+                    foreach ($wilayas as $w) {
+                        $sub->orWhereRaw("LOWER(TRIM({$table}.wilaya)) = ?", [strtolower(trim($w))]);
+                    }
+                });
             }
         });
     }
