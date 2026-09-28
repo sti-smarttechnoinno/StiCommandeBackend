@@ -49,8 +49,13 @@ import {
   ShieldAlert,
   Zap,
   FileText,
+  CalendarCheck,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { VisitsTable } from '@/features/crm/components/visits-table';
+import { CreateVisitDialog } from '@/features/crm/components/create-visit-dialog';
+import { ClientTimeline } from '@/features/crm/components/client-timeline';
+import { QuotesTable } from '@/features/crm/components/quotes-table';
 
 export default function ClientProfilePage() {
   const params = useParams();
@@ -61,6 +66,8 @@ export default function ClientProfilePage() {
   const [clientOrders, setClientOrders] = useState<OrderData[]>([]);
   const [loading, setLoading] = useState(true);
   const [editOpen, setEditOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'orders' | 'visits' | 'timeline' | 'quotes'>('orders');
+  const [createVisitOpen, setCreateVisitOpen] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -431,75 +438,152 @@ export default function ClientProfilePage() {
 
       {/* Main Content Layout: Client Orders (8 cols) + Account Sidebar (4 cols) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        {/* Left: Client Orders List (8 cols) */}
-        <div className="lg:col-span-8 space-y-6">
-          <Card className="border border-border/60 shadow-xs rounded-2xl overflow-hidden bg-card">
-            <CardHeader className="bg-muted/30 pb-4 border-b border-border/40">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <div className="p-2 rounded-xl bg-primary/10 text-primary">
-                    <ShoppingCart className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <CardTitle className="text-base font-bold">Client Orders History</CardTitle>
-                    <CardDescription className="text-xs">
-                      Recent purchases and orders placed by {client.name}.
-                    </CardDescription>
-                  </div>
-                </div>
-                <Badge variant="outline" className="text-xs font-bold border-primary/30 text-primary bg-primary/10">
-                  {clientOrders.length} Orders
-                </Badge>
-              </div>
-            </CardHeader>
-
-            <CardContent className="p-0">
-              {clientOrders.length === 0 ? (
-                <div className="p-12 text-center space-y-3">
-                  <div className="w-12 h-12 rounded-full bg-muted mx-auto flex items-center justify-center text-muted-foreground">
-                    <ShoppingCart className="h-6 w-6" />
-                  </div>
-                  <h4 className="text-sm font-bold text-foreground">No Orders Placed Yet</h4>
-                  <p className="text-xs text-muted-foreground max-w-sm mx-auto">
-                    This client account has no order history recorded in the database yet.
-                  </p>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="border-border/40 hover:bg-transparent">
-                        <TableHead className="text-xs font-bold">Order Code</TableHead>
-                        <TableHead className="text-xs font-bold">Date</TableHead>
-                        <TableHead className="text-xs font-bold">Status</TableHead>
-                        <TableHead className="text-xs font-bold">Payment</TableHead>
-                        <TableHead className="text-xs font-bold text-right">Total Amount</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {clientOrders.map((order) => (
-                        <TableRow key={order.id} className="hover:bg-muted/30 border-border/40 transition-colors">
-                          <TableCell className="font-mono text-xs font-bold text-primary">
-                            {order.order_code}
-                          </TableCell>
-                          <TableCell className="text-xs text-muted-foreground">
-                            {new Date(order.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
-                          </TableCell>
-                          <TableCell>
-                            <OrderStatusBadge status={order.status} />
-                          </TableCell>
-                          <TableCell className="text-xs text-foreground font-medium">{order.payment_method}</TableCell>
-                          <TableCell className="text-xs font-bold text-right text-foreground">
-                            {formatCurrency(Number(order.total_amount || 0))}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
+        {/* Left: Orders, Visits & CRM Timeline (8 cols) */}
+        <div className="lg:col-span-8 space-y-4">
+          {/* Tab Selector */}
+          <div className="flex items-center gap-1.5 p-1 bg-muted/40 rounded-2xl border border-border/50 w-fit">
+            <button
+              type="button"
+              onClick={() => setActiveTab('orders')}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all",
+                activeTab === 'orders'
+                  ? "bg-card text-foreground shadow-xs"
+                  : "text-muted-foreground hover:text-foreground"
               )}
-            </CardContent>
-          </Card>
+            >
+              <ShoppingCart className="h-3.5 w-3.5" />
+              <span>Commandes ({clientOrders.length})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('visits')}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all",
+                activeTab === 'visits'
+                  ? "bg-card text-foreground shadow-xs"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <CalendarCheck className="h-3.5 w-3.5" />
+              <span>Visites Terrain</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('timeline')}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all",
+                activeTab === 'timeline'
+                  ? "bg-card text-foreground shadow-xs"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Clock className="h-3.5 w-3.5" />
+              <span>Chronologie 360°</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('quotes')}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all",
+                activeTab === 'quotes'
+                  ? "bg-card text-foreground shadow-xs"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <FileText className="h-3.5 w-3.5" />
+              <span>Devis & Proformas</span>
+            </button>
+          </div>
+
+          {/* Panel 1: Orders History */}
+          {activeTab === 'orders' && (
+            <Card className="border border-border/60 shadow-xs rounded-2xl overflow-hidden bg-card">
+              <CardHeader className="bg-muted/30 pb-4 border-b border-border/40">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 rounded-xl bg-primary/10 text-primary">
+                      <ShoppingCart className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-base font-bold">Client Orders History</CardTitle>
+                      <CardDescription className="text-xs">
+                        Recent purchases and orders placed by {client.name}.
+                      </CardDescription>
+                    </div>
+                  </div>
+                  <Badge variant="outline" className="text-xs font-bold border-primary/30 text-primary bg-primary/10">
+                    {clientOrders.length} Orders
+                  </Badge>
+                </div>
+              </CardHeader>
+
+              <CardContent className="p-0">
+                {clientOrders.length === 0 ? (
+                  <div className="p-12 text-center space-y-3">
+                    <div className="w-12 h-12 rounded-full bg-muted mx-auto flex items-center justify-center text-muted-foreground">
+                      <ShoppingCart className="h-6 w-6" />
+                    </div>
+                    <h4 className="text-sm font-bold text-foreground">No Orders Placed Yet</h4>
+                    <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                      This client account has no order history recorded in the database yet.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="border-border/40 hover:bg-transparent">
+                          <TableHead className="text-xs font-bold">Order Code</TableHead>
+                          <TableHead className="text-xs font-bold">Date</TableHead>
+                          <TableHead className="text-xs font-bold">Status</TableHead>
+                          <TableHead className="text-xs font-bold">Payment</TableHead>
+                          <TableHead className="text-xs font-bold text-right">Total Amount</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {clientOrders.map((order) => (
+                          <TableRow key={order.id} className="hover:bg-muted/30 border-border/40 transition-colors">
+                            <TableCell className="font-mono text-xs font-bold text-primary">
+                              {order.order_code}
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground">
+                              {new Date(order.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                            </TableCell>
+                            <TableCell>
+                              <OrderStatusBadge status={order.status} />
+                            </TableCell>
+                            <TableCell className="text-xs text-foreground font-medium">{order.payment_method}</TableCell>
+                            <TableCell className="text-xs font-bold text-right text-foreground">
+                              {formatCurrency(Number(order.total_amount || 0))}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Panel 2: Visits */}
+          {activeTab === 'visits' && (
+            <VisitsTable
+              defaultClientId={Number(id)}
+              onOpenCreate={() => setCreateVisitOpen(true)}
+            />
+          )}
+
+          {/* Panel 3: 360 Timeline */}
+          {activeTab === 'timeline' && (
+            <ClientTimeline clientId={Number(id)} />
+          )}
+
+          {/* Panel 4: Devis & Proformas */}
+          {activeTab === 'quotes' && (
+            <QuotesTable clientId={Number(id)} />
+          )}
         </div>
 
         {/* Right: Account & Territory Info (4 cols) */}
@@ -621,6 +705,13 @@ export default function ClientProfilePage() {
           </Card>
         </div>
       </div>
+
+      {/* Modal to plan a visit directly for this client */}
+      <CreateVisitDialog
+        open={createVisitOpen}
+        onOpenChange={setCreateVisitOpen}
+        defaultClientId={Number(id)}
+      />
     </div>
   );
 }

@@ -80,6 +80,11 @@ class User extends Authenticatable
         return $this->hasMany(UserTask::class, 'assigned_by');
     }
 
+    public function crmVisits()
+    {
+        return $this->hasMany(CrmVisit::class, 'user_id');
+    }
+
     public function roleModel()
     {
         return $this->belongsTo(Role::class, 'role', 'slug');
@@ -93,6 +98,22 @@ class User extends Authenticatable
     public function conversationsAsDelegate()
     {
         return $this->hasMany(Conversation::class, 'delegate_id');
+    }
+
+
+    public function crmLeads()
+    {
+        return $this->hasMany(CrmLead::class, 'user_id');
+    }
+
+    public function crmOpportunities()
+    {
+        return $this->hasMany(CrmOpportunity::class, 'user_id');
+    }
+
+    public function crmQuotes()
+    {
+        return $this->hasMany(CrmQuote::class, 'user_id');
     }
 
     public function sentMessages()

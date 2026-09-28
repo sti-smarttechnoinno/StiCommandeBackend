@@ -5,6 +5,8 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
  * @property int $id
@@ -87,6 +89,31 @@ class Client extends Model
     public function objectives()
     {
         return $this->hasMany(ClientObjective::class, 'client_id');
+    }
+
+    public function crmVisits(): HasMany
+    {
+        return $this->hasMany(CrmVisit::class, 'client_id')->orderBy('planned_at', 'desc');
+    }
+
+    public function crmInteractions(): HasMany
+    {
+        return $this->hasMany(CrmInteraction::class, 'client_id')->orderBy('interaction_date', 'desc');
+    }
+
+    public function crmOpportunities(): HasMany
+    {
+        return $this->hasMany(CrmOpportunity::class, 'client_id')->orderBy('created_at', 'desc');
+    }
+
+    public function crmLead(): HasOne
+    {
+        return $this->hasOne(CrmLead::class, 'converted_client_id');
+    }
+
+    public function crmQuotes(): HasMany
+    {
+        return $this->hasMany(CrmQuote::class, 'client_id')->orderBy('created_at', 'desc');
     }
 
     /**

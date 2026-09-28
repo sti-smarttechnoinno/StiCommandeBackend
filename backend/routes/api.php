@@ -23,6 +23,11 @@ use App\Http\Controllers\Api\SalesJournalController;
 use App\Http\Controllers\Api\ChatController;
 use App\Http\Controllers\Api\UserObjectiveController;
 use App\Http\Controllers\Api\UserTaskController;
+use App\Http\Controllers\Api\CrmVisitController;
+use App\Http\Controllers\Api\CrmInteractionController;
+use App\Http\Controllers\Api\CrmLeadController;
+use App\Http\Controllers\Api\CrmOpportunityController;
+use App\Http\Controllers\Api\CrmQuoteController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/auth/login', [AuthController::class, 'login']);
@@ -233,4 +238,44 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/tasks/{id}', [UserTaskController::class, 'show']);
     Route::put('/tasks/{id}/status', [UserTaskController::class, 'updateStatus']);
     Route::delete('/tasks/{id}', [UserTaskController::class, 'destroy']);
+
+    // CRM Visits & Timeline
+    Route::get('/crm/visits/kpis', [CrmVisitController::class, 'kpis']);
+    Route::get('/crm/visits', [CrmVisitController::class, 'index']);
+    Route::post('/crm/visits', [CrmVisitController::class, 'store']);
+    Route::get('/crm/visits/{id}', [CrmVisitController::class, 'show']);
+    Route::put('/crm/visits/{id}', [CrmVisitController::class, 'update']);
+    Route::post('/crm/visits/{id}/complete', [CrmVisitController::class, 'complete']);
+    Route::delete('/crm/visits/{id}', [CrmVisitController::class, 'destroy']);
+
+    Route::get('/crm/interactions', [CrmInteractionController::class, 'index']);
+    Route::post('/crm/interactions', [CrmInteractionController::class, 'store']);
+    Route::delete('/crm/interactions/{id}', [CrmInteractionController::class, 'destroy']);
+
+    // CRM Leads (Prospects)
+    Route::get('/crm/leads', [CrmLeadController::class, 'index']);
+    Route::post('/crm/leads', [CrmLeadController::class, 'store']);
+    Route::get('/crm/leads/{id}', [CrmLeadController::class, 'show']);
+    Route::put('/crm/leads/{id}', [CrmLeadController::class, 'update']);
+    Route::post('/crm/leads/{id}/convert', [CrmLeadController::class, 'convert']);
+    Route::delete('/crm/leads/{id}', [CrmLeadController::class, 'destroy']);
+
+    // CRM Opportunities & Pipeline Kanban
+    Route::get('/crm/opportunities/kpis', [CrmOpportunityController::class, 'kpis']);
+    Route::get('/crm/opportunities', [CrmOpportunityController::class, 'index']);
+    Route::post('/crm/opportunities', [CrmOpportunityController::class, 'store']);
+    Route::get('/crm/opportunities/{id}', [CrmOpportunityController::class, 'show']);
+    Route::put('/crm/opportunities/{id}', [CrmOpportunityController::class, 'update']);
+    Route::patch('/crm/opportunities/{id}/stage', [CrmOpportunityController::class, 'updateStage']);
+    Route::delete('/crm/opportunities/{id}', [CrmOpportunityController::class, 'destroy']);
+
+    // CRM Quotes (Devis & Proformas)
+    Route::get('/crm/quotes/kpis', [CrmQuoteController::class, 'kpis']);
+    Route::get('/crm/quotes', [CrmQuoteController::class, 'index']);
+    Route::post('/crm/quotes', [CrmQuoteController::class, 'store']);
+    Route::get('/crm/quotes/{id}', [CrmQuoteController::class, 'show']);
+    Route::put('/crm/quotes/{id}', [CrmQuoteController::class, 'update']);
+    Route::patch('/crm/quotes/{id}/status', [CrmQuoteController::class, 'updateStatus']);
+    Route::post('/crm/quotes/{id}/convert-to-order', [CrmQuoteController::class, 'convertToOrder']);
+    Route::delete('/crm/quotes/{id}', [CrmQuoteController::class, 'destroy']);
 });

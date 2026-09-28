@@ -18,6 +18,9 @@ import {
   FileSpreadsheet,
   MessageSquare,
   Target,
+  CalendarCheck,
+  Layers,
+  UserCheck,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -53,6 +56,17 @@ export const NAV_ITEMS: NavItem[] = [
     ],
   },
   { label: 'Clients', href: '/clients', icon: Users, permission: 'clients.view' },
+  {
+    label: 'CRM & Pipeline',
+    icon: Layers,
+    permission: 'clients.view',
+    children: [
+      { label: 'Pipeline Commercial', href: '/crm/pipeline', icon: Layers, permission: 'clients.view' },
+      { label: 'Devis & Proformas', href: '/crm/quotes', icon: FileText, permission: 'clients.view' },
+      { label: 'Visites Terrain', href: '/crm/visits', icon: CalendarCheck, permission: 'clients.view' },
+      { label: 'Prospects (Leads)', href: '/crm/leads', icon: UserCheck, permission: 'clients.view' },
+    ],
+  },
   { label: 'Encaissements', href: '/encaissements', icon: Banknote, permission: 'clients.view' },
   { label: 'Délégués', href: '/delegates', icon: UserPlus, permission: 'users.manage' },
   { label: 'Objectifs & Missions', href: '/objectives', icon: Target },
