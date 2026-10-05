@@ -108,20 +108,41 @@ class ClientController extends Controller
         $monthStart = now()->startOfMonth();
         $monthEnd = now()->endOfMonth();
 
-        $objectives = \App\Models\ClientObjective::whereIn('client_id', $clientIds)
-            ->where('year', $currentYear)
-            ->where('month', $currentMonth)
-            ->get()
-            ->keyBy('client_id');
+        $objectives = collect();
+        try {
+            if (\Illuminate\Support\Facades\Schema::hasTable('client_objectives')) {
+                $objectives = \App\Models\ClientObjective::whereIn('client_id', $clientIds)
+                    ->where('year', $currentYear)
+                    ->where('month', $currentMonth)
+                    ->get()
+                    ->keyBy('client_id');
+            }
+        } catch (\Throwable $e) {
+            $objectives = collect();
+        }
 
-        $monthOrders = \App\Models\Order::whereIn('client_id', $clientIds)
-            ->whereBetween('created_at', [$monthStart, $monthEnd])
-            ->where('status', '!=', 'cancelled')
-            ->with(['items.product'])
-            ->get()
-            ->groupBy('client_id');
+        $monthOrders = collect();
+        try {
+            if (\Illuminate\Support\Facades\Schema::hasTable('orders')) {
+                $monthOrders = \App\Models\Order::whereIn('client_id', $clientIds)
+                    ->whereBetween('created_at', [$monthStart, $monthEnd])
+                    ->where('status', '!=', 'cancelled')
+                    ->with(['items.product'])
+                    ->get()
+                    ->groupBy('client_id');
+            }
+        } catch (\Throwable $e) {
+            $monthOrders = collect();
+        }
 
-        $lastImportAt = \App\Models\EncaissementImport::latest()->value('created_at');
+        $lastImportAt = null;
+        try {
+            if (\Illuminate\Support\Facades\Schema::hasTable('encaissement_imports')) {
+                $lastImportAt = \App\Models\EncaissementImport::latest()->value('created_at');
+            }
+        } catch (\Throwable $e) {
+            $lastImportAt = null;
+        }
 
         return response()->json([
             'data' => $clients->map(fn ($client) => $this->formatClient(

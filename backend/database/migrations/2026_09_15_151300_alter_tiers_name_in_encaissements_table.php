@@ -11,9 +11,11 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('encaissements', function (Blueprint $table) {
-            $table->string('tiers_name')->nullable()->change();
-        });
+        if (Schema::hasTable('encaissements')) {
+            Schema::table('encaissements', function (Blueprint $table) {
+                $table->string('tiers_name')->nullable()->change();
+            });
+        }
     }
 
     /**
