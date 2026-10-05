@@ -29,7 +29,8 @@ ENV NEXT_PUBLIC_WS_URL=$NEXT_PUBLIC_WS_URL
 ENV NEXT_PUBLIC_WEBSOCKET_URL=$NEXT_PUBLIC_WEBSOCKET_URL
 ENV NEXT_TELEMETRY_DISABLED=1
 
-RUN npm run build
+# Use Webpack for production build inside container (Turbopack requires native bindings unavailable on some Alpine setups)
+RUN npm run build -- --webpack
 
 # =========================================================
 # Stage 3: Production Runner (Minimal image)
