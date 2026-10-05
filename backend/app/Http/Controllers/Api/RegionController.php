@@ -352,14 +352,18 @@ class RegionController extends Controller
         $wilayasQuery = Wilaya::where(function ($q) use ($region) {
             $q->whereHas('regions', function ($rq) use ($region) {
                 $rq->where('regions.id', $region->id);
-            })->orWhere('custom_region_id', $region->id);
+            })->orWhere('custom_region_id', $region->id)
+              ->orWhereRaw('LOWER(TRIM(region_name)) = ?', [strtolower(trim($region->name))])
+              ->orWhereRaw('LOWER(TRIM(CAST(region_id AS TEXT))) = ?', [strtolower(trim($region->code))]);
         });
 
         if (!empty($delegateWilayaPatterns)) {
             $wilayasQuery = Wilaya::where(function ($q) use ($region, $delegateWilayaPatterns) {
                 $q->whereHas('regions', function ($rq) use ($region) {
                     $rq->where('regions.id', $region->id);
-                })->orWhere('custom_region_id', $region->id);
+                })->orWhere('custom_region_id', $region->id)
+                  ->orWhereRaw('LOWER(TRIM(region_name)) = ?', [strtolower(trim($region->name))])
+                  ->orWhereRaw('LOWER(TRIM(CAST(region_id AS TEXT))) = ?', [strtolower(trim($region->code))]);
 
                 foreach ($delegateWilayaPatterns as $pat) {
                     if (preg_match('/^(\d+)\s*-\s*(.+)$/', $pat, $matches)) {
@@ -378,10 +382,11 @@ class RegionController extends Controller
 
         if ($wilayas->isEmpty()) {
             $baseCodes = ['center', 'east', 'west', 'south'];
-            if (in_array(strtolower($region->code), $baseCodes)) {
+            if (in_array(strtolower($region->code), $baseCodes) || !empty($region->name)) {
                 $wilayas = Wilaya::where(function ($q) use ($region) {
                     $q->where('region_id', strtolower($region->code))
-                      ->orWhereRaw('LOWER(region_name) = ?', [strtolower($region->name)]);
+                      ->orWhereRaw('LOWER(TRIM(region_name)) = ?', [strtolower(trim($region->name))])
+                      ->orWhereRaw('LOWER(TRIM(region_name)) LIKE ?', ['%' . strtolower(trim($region->name)) . '%']);
                 })->get();
             }
         }

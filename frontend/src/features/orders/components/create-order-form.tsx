@@ -19,7 +19,7 @@ import {
 import { cn } from '@/lib/utils';
 import { clientsService, type ClientData } from '@/services/clients';
 import { productsService, type ProductData } from '@/services/products';
-import { regionsService } from '@/services/regions';
+import { regionsService, type RegionData } from '@/services/regions';
 import { ordersService } from '@/services/orders';
 import { usePermissions } from '@/hooks/use-permissions';
 import { formatCurrency } from '../utils';
@@ -71,7 +71,7 @@ export function CreateOrderForm() {
   // Reference Data
   const [clients, setClients] = useState<ClientData[]>([]);
   const [products, setProducts] = useState<ProductData[]>([]);
-  const [availableRegions, setAvailableRegions] = useState<string[]>([]);
+  const [dbRegions, setDbRegions] = useState<RegionData[]>([]);
 
   // Territory / Region Selection
   const [selectedRegion, setSelectedRegion] = useState<string>('all');
@@ -225,14 +225,9 @@ export function CreateOrderForm() {
         setClients(loadedClients);
         setProducts(loadedProducts);
 
-        // Derive unique region names from regions endpoint + clients
-        const regNames = Array.from(
-          new Set([
-            ...(regionsRes.data || []).map((r) => r.name),
-            ...loadedClients.map((c) => c.region).filter(Boolean),
-          ])
-        ).filter(Boolean);
-        setAvailableRegions(regNames);
+        // Use strictly the REAL regions configured and created in the database
+        const validRegions = regionsRes.data || [];
+        setDbRegions(validRegions);
 
         // If commercial is assigned to a region, lock selectedRegion to it
         const effectiveRegion = (isCommercial || isRestrictedByRegion) && (userRegion || user?.region)
@@ -240,16 +235,44 @@ export function CreateOrderForm() {
           : 'all';
         setSelectedRegion(effectiveRegion);
 
+        // Helper to check if a client belongs to a given region
+        const isClientInRegion = (c: ClientData, regName: string): boolean => {
+          if (!regName || regName === 'all') return true;
+          const regObj = validRegions.find(
+            (r) => r.name.toLowerCase().trim() === regName.toLowerCase().trim() ||
+                   String(r.id).toLowerCase().trim() === regName.toLowerCase().trim()
+          );
+          const cReg = (c.region || '').toLowerCase().trim();
+          const target = regName.toLowerCase().trim();
+          if (cReg && (cReg === target || (regObj && cReg === String(regObj.id).toLowerCase()))) {
+            return true;
+          }
+          if (regObj && regObj.wilayas && regObj.wilayas.length > 0) {
+            const cWilaya = (c.wilaya || '').toLowerCase().trim();
+            if (cWilaya) {
+              return regObj.wilayas.some((w) => {
+                const wCode = String(w.code || '').trim();
+                const wName = (w.name || '').toLowerCase().trim();
+                return (
+                  (wCode && (cWilaya === wCode || cWilaya.startsWith(wCode + ' ') || cWilaya.startsWith(wCode + '-'))) ||
+                  (wName && (cWilaya === wName || cWilaya.includes(wName)))
+                );
+              });
+            }
+          }
+          return false;
+        };
+
         // Filter clients based on effective region
         const filtered = effectiveRegion && effectiveRegion !== 'all'
-          ? loadedClients.filter((c) => (c.region || '').toLowerCase().trim() === effectiveRegion.toLowerCase())
+          ? loadedClients.filter((c) => isClientInRegion(c, effectiveRegion))
           : loadedClients;
 
         // Auto select client: check URL param clientId first, then first available
         const targetUrlClient = urlClientId
           ? loadedClients.find((c) => String(c.id) === String(urlClientId))
           : null;
-        const initialClient = targetUrlClient || (filtered.length > 0 ? filtered[0] : null);
+        const initialClient = targetUrlClient || (filtered.length > 0 ? filtered[0] : (loadedClients.length > 0 ? loadedClients[0] : null));
 
         if (initialClient) {
           setSelectedClientId(initialClient.id);
@@ -261,7 +284,10 @@ export function CreateOrderForm() {
           setDeliveryAddress(autofilledAddr);
 
           if (!isRegionLocked && initialClient.region && (!effectiveRegion || effectiveRegion === 'all')) {
-            setSelectedRegion(initialClient.region);
+            const matchingRegion = validRegions.find((r) => isClientInRegion(initialClient, r.name));
+            if (matchingRegion) {
+              setSelectedRegion(matchingRegion.name);
+            }
           }
         }
 
@@ -293,27 +319,58 @@ export function CreateOrderForm() {
     };
   }, [isCommercial, isRestrictedByRegion, userRegion, user?.region, urlClientId]);
 
+  // Helper function to check if client belongs to a region based on direct region tag OR associated wilaya
+  const checkClientBelongsToRegion = useCallback((c: ClientData, regionTarget: string): boolean => {
+    if (!regionTarget || regionTarget === 'all') return true;
+    const target = regionTarget.toLowerCase().trim();
+    const cReg = (c.region || '').toLowerCase().trim();
+
+    // 1. Direct region match
+    if (cReg === target) return true;
+
+    // 2. Match through DB region object and its assigned wilayas
+    const regObj = dbRegions.find(
+      (r) => r.name.toLowerCase().trim() === target ||
+             String(r.id).toLowerCase().trim() === target
+    );
+
+    if (regObj) {
+      if (cReg && (cReg === regObj.name.toLowerCase().trim() || cReg === String(regObj.id).toLowerCase().trim())) {
+        return true;
+      }
+      if (regObj.wilayas && regObj.wilayas.length > 0) {
+        const cWilaya = (c.wilaya || '').toLowerCase().trim();
+        if (cWilaya) {
+          return regObj.wilayas.some((w) => {
+            const wCode = String(w.code || '').trim();
+            const wName = (w.name || '').toLowerCase().trim();
+            return (
+              (wCode && (cWilaya === wCode || cWilaya.startsWith(wCode + ' ') || cWilaya.startsWith(wCode + '-'))) ||
+              (wName && (cWilaya === wName || cWilaya.includes(wName)))
+            );
+          });
+        }
+      }
+    }
+
+    return false;
+  }, [dbRegions]);
+
   const filteredClients = useMemo(() => {
     const activeReg = isRegionLocked ? lockedRegionName : selectedRegion;
     if (!activeReg || activeReg === 'all') {
       return clients;
     }
-    const target = activeReg.toLowerCase().trim();
-    const matches = clients.filter((c) => {
-      const reg = (c.region || '').toLowerCase().trim();
-      const wilaya = (c.wilaya || '').toLowerCase().trim();
-      // Match exact region name or if wilaya contains region keyword
-      return reg === target || reg.includes(target) || target.includes(reg) || wilaya.includes(target);
-    });
+    const matches = clients.filter((c) => checkClientBelongsToRegion(c, activeReg));
 
     // Fallback: If 0 clients match the region but clients exist in database,
-    // return all clients so user is not blocked from creating an order
+    // return all clients so user is never blocked from creating an order
     if (matches.length === 0 && clients.length > 0) {
       return clients;
     }
 
     return matches;
-  }, [clients, selectedRegion, isRegionLocked, lockedRegionName]);
+  }, [clients, selectedRegion, isRegionLocked, lockedRegionName, checkClientBelongsToRegion]);
 
   const searchedClients = useMemo(() => {
     const q = clientSearchQuery.toLowerCase().trim();
@@ -341,18 +398,21 @@ export function CreateOrderForm() {
   const handleRegionChange = (newRegion: string | null) => {
     const val = newRegion || 'all';
     setSelectedRegion(val);
-    const target = val.toLowerCase().trim();
     const matches = val === 'all'
       ? clients
-      : clients.filter((c) => (c.region || '').toLowerCase().trim() === target);
+      : clients.filter((c) => checkClientBelongsToRegion(c, val));
 
     if (matches.length > 0) {
       if (!matches.some((c) => String(c.id) === String(selectedClientId))) {
         handleSelectClient(matches[0]);
       }
     } else {
-      setSelectedClientId('');
-      setDeliveryAddress('');
+      if (clients.length > 0) {
+        handleSelectClient(clients[0]);
+      } else {
+        setSelectedClientId('');
+        setDeliveryAddress('');
+      }
     }
   };
 
@@ -629,13 +689,11 @@ export function CreateOrderForm() {
                       <SelectItem value="all" className="text-xs font-semibold py-2 rounded-lg cursor-pointer">
                         🌐 Tous les Territoires / Régions ({clients.length} clients)
                       </SelectItem>
-                      {availableRegions.map((reg) => {
-                        const count = clients.filter(
-                          (c) => (c.region || '').toLowerCase().trim() === reg.toLowerCase().trim()
-                        ).length;
+                      {dbRegions.map((reg) => {
+                        const count = clients.filter((c) => checkClientBelongsToRegion(c, reg.name)).length;
                         return (
-                          <SelectItem key={reg} value={reg} className="text-xs font-semibold py-2 rounded-lg cursor-pointer">
-                            📍 Région {reg} ({count} client{count > 1 ? 's' : ''})
+                          <SelectItem key={reg.name || reg.id} value={reg.name} className="text-xs font-semibold py-2 rounded-lg cursor-pointer">
+                            📍 {reg.name} ({count} client{count > 1 ? 's' : ''})
                           </SelectItem>
                         );
                       })}
