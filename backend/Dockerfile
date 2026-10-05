@@ -105,15 +105,19 @@ RUN rm -rf /var/www/commande/backend/bootstrap/cache/*.php \
     /var/www/commande/backend/storage/framework/cache/data \
     /var/www/commande/backend/storage/framework/sessions \
     /var/www/commande/backend/storage/framework/views \
+    /var/www/commande/backend/storage/app/temp_imports \
     /var/www/commande/backend/storage/logs \
     /var/www/commande/backend/bootstrap/cache \
     /var/www/commande/backend/public/build \
+    /var/lib/nginx/tmp/client_body \
+    /var/lib/nginx/tmp/proxy \
+    /var/lib/nginx/tmp/fastcgi \
     /run/nginx \
     /var/log/supervisor \
     && echo '{}' > /var/www/commande/backend/public/build/manifest.json \
     && touch /var/www/commande/backend/storage/logs/laravel.log \
-    && chown -R www-data:www-data /var/www/commande/backend/storage /var/www/commande/backend/bootstrap/cache \
-    && chmod -R 775 /var/www/commande/backend/storage /var/www/commande/backend/bootstrap/cache
+    && chown -R www-data:www-data /var/www/commande/backend/storage /var/www/commande/backend/bootstrap/cache /var/lib/nginx /run/nginx \
+    && chmod -R 775 /var/www/commande/backend/storage /var/www/commande/backend/bootstrap/cache /var/lib/nginx /run/nginx
 
 # Expose HTTP port (80) and WebSocket Hub port (8085)
 EXPOSE 80 8085

@@ -21,7 +21,7 @@ class ClientImportService
     {
         $this->tempDir = storage_path('app/temp_imports');
         if (!is_dir($this->tempDir)) {
-            mkdir($this->tempDir, 0755, true);
+            @mkdir($this->tempDir, 0775, true);
         }
     }
 
@@ -32,6 +32,10 @@ class ClientImportService
     {
         ini_set('memory_limit', '512M');
         set_time_limit(180);
+
+        if (!is_dir($this->tempDir) && !@mkdir($this->tempDir, 0775, true) && !is_dir($this->tempDir)) {
+            throw new \RuntimeException("Impossible de préparer le dossier de stockage temporaire ({$this->tempDir}). Vérifiez les permissions d'écriture.");
+        }
 
         $ext = strtolower($file->getClientOriginalExtension());
         if (!in_array($ext, ['xlsx', 'xls', 'csv'])) {

@@ -8,16 +8,18 @@ rm -f /var/www/commande/backend/bootstrap/cache/*.php
 
 # Ensure directories exist
 mkdir -p /var/www/commande/backend/storage/framework/{cache/data,sessions,views}
+mkdir -p /var/www/commande/backend/storage/app/temp_imports
 mkdir -p /var/www/commande/backend/storage/logs
 mkdir -p /var/www/commande/backend/bootstrap/cache
+mkdir -p /var/lib/nginx/tmp/{client_body,proxy,fastcgi}
 mkdir -p /run/nginx
 
 # Ensure log file exists
 touch /var/www/commande/backend/storage/logs/laravel.log
 
 # Ensure initial permissions
-chown -R www-data:www-data /var/www/commande/backend/storage /var/www/commande/backend/bootstrap/cache
-chmod -R 775 /var/www/commande/backend/storage /var/www/commande/backend/bootstrap/cache
+chown -R www-data:www-data /var/www/commande/backend/storage /var/www/commande/backend/bootstrap/cache /var/lib/nginx /run/nginx
+chmod -R 775 /var/www/commande/backend/storage /var/www/commande/backend/bootstrap/cache /var/lib/nginx /run/nginx
 
 # Export runtime flags with sensible defaults for supervisor
 export START_WEBSOCKET="${START_WEBSOCKET:-true}"

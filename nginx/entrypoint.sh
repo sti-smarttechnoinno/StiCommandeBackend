@@ -6,7 +6,8 @@ RUNTIME_DIR="${TLS_RUNTIME_DIR:-/var/cache/nginx/certs}"
 TLS_CONF="${TLS_CONF_FILE:-/etc/nginx/tls_certs.conf}"
 TLS_CN_VALUE="${TLS_CN:-sticommande.local}"
 
-mkdir -p "$RUNTIME_DIR"
+mkdir -p "$RUNTIME_DIR" /var/cache/nginx/client_temp /var/cache/nginx/proxy_temp
+chown -R nginx:nginx /var/cache/nginx 2>/dev/null || true
 
 SAN_LIST=""
 CN_VALUE=""
