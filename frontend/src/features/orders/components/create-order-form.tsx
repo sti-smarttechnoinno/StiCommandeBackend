@@ -1054,22 +1054,22 @@ export function CreateOrderForm() {
                                   type="number"
                                   min="0"
                                   max="100"
-                                  step="0.5"
+                                  step="any"
                                   value={row.discountPercent === 0 ? '' : row.discountPercent}
                                   placeholder="0%"
                                   onChange={(e) => {
-                                    const val = e.target.value === '' ? 0 : parseFloat(e.target.value) || 0;
-                                    handleDiscountChange(row.id, val);
+                                    const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
+                                    handleDiscountChange(row.id, isNaN(val) ? 0 : val);
                                   }}
-                                  className="h-9 text-xs text-center font-bold rounded-xl border-border/70 bg-background focus:border-primary pr-6"
+                                  className="h-9 text-xs text-center font-bold rounded-xl border-border/70 bg-background focus:border-primary pr-6 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                 />
                                 <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-muted-foreground pointer-events-none">
                                   %
                                 </span>
                               </div>
-                              {/* Quick Presets: 2%, 3.5%, 5% */}
-                              <div className="flex items-center gap-1">
-                                {[2, 3.5, 5].map((preset) => (
+                              {/* Quick Presets: 1.5%, 1.75%, 2.75%, 3% */}
+                              <div className="flex items-center gap-1 flex-wrap justify-center">
+                                {[1.5, 1.75, 2.75, 3].map((preset) => (
                                   <button
                                     key={preset}
                                     type="button"

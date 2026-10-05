@@ -422,6 +422,7 @@ class OrderController extends Controller
             'items.*.product_name' => 'required_without:items.*.product_id|nullable|string',
             'items.*.quantity' => 'required|integer|min:1',
             'items.*.unit_price' => 'nullable|numeric|min:0',
+            'items.*.discount_percent' => 'nullable|numeric|min:0|max:100',
         ]);
 
         $user = $request->user();
@@ -522,7 +523,9 @@ class OrderController extends Controller
                     }
                 }
 
-                $subtotal = $unitPrice * $quantity;
+                $discountPercent = (float) ($item['discount_percent'] ?? 0);
+                $netUnitPrice = $unitPrice * (1 - ($discountPercent / 100));
+                $subtotal = round($netUnitPrice * $quantity, 2);
                 $totalAmount += $subtotal;
 
                 $orderItemsData[] = [
