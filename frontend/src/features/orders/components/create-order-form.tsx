@@ -299,7 +299,20 @@ export function CreateOrderForm() {
       return clients;
     }
     const target = activeReg.toLowerCase().trim();
-    return clients.filter((c) => (c.region || '').toLowerCase().trim() === target);
+    const matches = clients.filter((c) => {
+      const reg = (c.region || '').toLowerCase().trim();
+      const wilaya = (c.wilaya || '').toLowerCase().trim();
+      // Match exact region name or if wilaya contains region keyword
+      return reg === target || reg.includes(target) || target.includes(reg) || wilaya.includes(target);
+    });
+
+    // Fallback: If 0 clients match the region but clients exist in database,
+    // return all clients so user is not blocked from creating an order
+    if (matches.length === 0 && clients.length > 0) {
+      return clients;
+    }
+
+    return matches;
   }, [clients, selectedRegion, isRegionLocked, lockedRegionName]);
 
   const searchedClients = useMemo(() => {

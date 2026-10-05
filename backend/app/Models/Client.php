@@ -135,6 +135,11 @@ class Client extends Model
         $wilayas = method_exists($user, 'getAssignedRegionWilayas') ? $user->getAssignedRegionWilayas() : [];
         $userId = $user->id;
 
+        // If user has NO delegate assignment, NO region, and NO wilaya, don't return an impossible condition
+        if (!$userId && empty($lowRegions) && empty($wilayas)) {
+            return $query;
+        }
+
         return $query->where(function ($q) use ($table, $lowRegions, $wilayas, $userId) {
             $hasCondition = false;
 
@@ -165,6 +170,14 @@ class Client extends Model
                         $sub->orWhereRaw("LOWER(TRIM({$table}.wilaya)) = ?", [strtolower(trim($w))]);
                     }
                 });
+                $hasCondition = true;
+            }
+
+            // Fallback: If commercial user has neither matching region nor matching wilaya in clients table,
+            // allow seeing unassigned clients so order creation is never completely blocked
+            if ($hasCondition) {
+                $q->orWhereNull("{$table}.delegate_id")
+                  ->orWhereNull("{$table}.region");
             }
         });
     }
