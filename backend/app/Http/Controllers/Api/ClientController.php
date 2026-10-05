@@ -85,12 +85,17 @@ class ClientController extends Controller
             'delegateName' => 'region',
         ];
         $sortField = $sortFieldMap[$sortFieldRaw] ?? $sortFieldRaw;
-        $sortDirection = $request->input('sortDirection', 'desc');
+        $sortDirection = strtolower($request->input('sortDirection', 'desc')) === 'asc' ? 'asc' : 'desc';
         $allowedSorts = ['name', 'client_code', 'phone', 'region', 'total_orders', 'total_spent', 'outstanding_balance', 'status', 'created_at'];
         if (! in_array($sortField, $allowedSorts)) {
             $sortField = 'created_at';
         }
-        $query->orderBy($sortField, $sortDirection === 'asc' ? 'asc' : 'desc');
+        if (DB::getDriverName() === 'pgsql') {
+            $nullOrder = $sortDirection === 'asc' ? 'NULLS FIRST' : 'NULLS LAST';
+            $query->orderByRaw("{$sortField} {$sortDirection} {$nullOrder}");
+        } else {
+            $query->orderBy($sortField, $sortDirection);
+        }
 
         $page = max(1, (int) $request->input('page', 1));
         $pageSize = max(1, min(200, (int) $request->input('pageSize', 10)));
@@ -691,7 +696,7 @@ class ClientController extends Controller
                     }
                 })->first();
                 if ($wilayaModel) {
-                    $regionName = $wilayaModel->region_name ?? $wilayaModel->region?->name;
+                    $regionName = $wilayaModel->region_name ?? ($wilayaModel->region instanceof \Illuminate\Database\Eloquent\Collection ? $wilayaModel->region->first()?->name : $wilayaModel->region?->name);
                     if ($regionName && empty($client->region)) {
                         $client->region = $regionName;
                     }
@@ -711,7 +716,11 @@ class ClientController extends Controller
 
                 if ($delegate) {
                     $client->delegate_id = $delegate->id;
-                    $client->saveQuietly();
+                    try {
+                        $client->saveQuietly();
+                    } catch (\Throwable $e) {
+                        // Prevent DB update failures during GET requests
+                    }
                 }
             }
         }
@@ -720,7 +729,8 @@ class ClientController extends Controller
         $delegateStatus = 'offline';
 
         if ($delegate) {
-            $isRecent = $delegate->last_seen_at && $delegate->last_seen_at->gt(now()->subSeconds(45));
+            $lastSeen = $delegate->last_seen_at;
+            $isRecent = $lastSeen && ($lastSeen instanceof \DateTimeInterface ? $lastSeen->gt(now()->subSeconds(45)) : Carbon::parse($lastSeen)->gt(now()->subSeconds(45)));
             $delegateIsOnline = $isRecent && $delegate->status !== 'offline' && $delegate->status !== 'suspended';
             $delegateStatus = $delegateIsOnline ? 'online' : ($delegate->status === 'suspended' ? 'suspended' : 'offline');
         }
@@ -800,24 +810,24 @@ class ClientController extends Controller
             'outstandingBalance' => (float) $client->outstanding_balance,
             'totalOrders' => $client->total_orders,
             'totalSpent' => (float) $client->total_spent,
-            'lastOrderDate' => $client->last_order_at instanceof \DateTimeInterface ? $client->last_order_at->toISOString() : ($client->last_order_at ? (string)$client->last_order_at : null),
-            'lastPaymentDate' => $client->last_payment_date instanceof \DateTimeInterface ? $client->last_payment_date->toISOString() : ($client->last_payment_date ? (string)$client->last_payment_date : null),
-            'lastPaymentAmount' => (float) $client->last_payment_amount,
+            'lastOrderDate' => $client->last_order_at instanceof \DateTimeInterface ? $client->last_order_at->toISOString() : ($client->last_order_at ? Carbon::parse($client->last_order_at)->toISOString() : null),
+            'lastPaymentDate' => $client->last_payment_date instanceof \DateTimeInterface ? $client->last_payment_date->toISOString() : ($client->last_payment_date ? Carbon::parse($client->last_payment_date)->toISOString() : null),
+            'lastPaymentAmount' => (float) ($client->last_payment_amount ?? 0),
             'lastPaymentMode' => $client->last_payment_mode,
             'lastPaymentReference' => $client->last_payment_reference,
             'lastPaymentStatus' => $client->last_payment_status,
             'lastPaymentOrderNumber' => $client->last_payment_order_number,
             'lastPaymentAccount' => $client->last_payment_account,
             'lastPayment' => ($client->last_payment_amount > 0 || $client->last_payment_date) ? [
-                'date' => $client->last_payment_date instanceof \DateTimeInterface ? $client->last_payment_date->toISOString() : ($client->last_payment_date ? (string)$client->last_payment_date : null),
-                'amount' => (float) $client->last_payment_amount,
+                'date' => $client->last_payment_date instanceof \DateTimeInterface ? $client->last_payment_date->toISOString() : ($client->last_payment_date ? Carbon::parse($client->last_payment_date)->toISOString() : null),
+                'amount' => (float) ($client->last_payment_amount ?? 0),
                 'mode' => $client->last_payment_mode,
                 'reference' => $client->last_payment_reference,
                 'status' => $client->last_payment_status,
                 'orderNumber' => $client->last_payment_order_number,
                 'account' => $client->last_payment_account,
             ] : null,
-            'createdAt' => $client->created_at->toISOString(),
+            'createdAt' => $client->created_at instanceof \DateTimeInterface ? $client->created_at->toISOString() : ($client->created_at ? Carbon::parse($client->created_at)->toISOString() : null),
             'objective' => $objectivePayload,
         ];
     }

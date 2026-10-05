@@ -305,14 +305,18 @@ class User extends Authenticatable
                 ->where(function ($query) use ($lowRegions, $matchedRegionIds) {
                     foreach ($lowRegions as $lr) {
                         $query->orWhereRaw('LOWER(TRIM(region_name)) = ?', [$lr])
-                              ->orWhereRaw('LOWER(TRIM(region_id)) = ?', [$lr]);
+                              ->orWhereRaw('LOWER(TRIM(CAST(region_id AS TEXT))) = ?', [$lr]);
                     }
 
                     if (!empty($matchedRegionIds)) {
-                        $query->orWhereIn('custom_region_id', $matchedRegionIds)
-                              ->orWhereHas('regions', function ($rq) use ($matchedRegionIds) {
-                                  $rq->whereIn('regions.id', $matchedRegionIds);
-                              });
+                        if (\Illuminate\Support\Facades\Schema::hasColumn('wilayas', 'custom_region_id')) {
+                            $query->orWhereIn('custom_region_id', $matchedRegionIds);
+                        }
+                        if (\Illuminate\Support\Facades\Schema::hasTable('region_wilaya')) {
+                            $query->orWhereHas('regions', function ($rq) use ($matchedRegionIds) {
+                                $rq->whereIn('regions.id', $matchedRegionIds);
+                            });
+                        }
                     }
                 })
                 ->get();
