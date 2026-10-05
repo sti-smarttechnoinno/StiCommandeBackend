@@ -197,8 +197,8 @@ class WilayaController extends Controller
         $validated = $request->validate([
             'code' => 'required|string|max:10|unique:wilayas,code',
             'name' => 'required|string|max:255',
-            'region_id' => 'required|in:east,west,center,south',
-            'region_name' => 'required|string|max:255',
+            'region_id' => 'nullable|string|max:255',
+            'region_name' => 'nullable|string|max:255',
             'delegate_id' => 'nullable|exists:users,id',
             'status' => 'nullable|in:active,limited,inactive',
         ]);
@@ -206,6 +206,8 @@ class WilayaController extends Controller
         $maxRank = (int) Wilaya::max('rank');
         $validated['rank'] = $maxRank + 1;
         $validated['status'] = $validated['status'] ?? 'active';
+        $validated['region_id'] = $validated['region_id'] ?? 'center';
+        $validated['region_name'] = $validated['region_name'] ?? 'Centre';
 
         $wilaya = Wilaya::create($validated);
 
@@ -219,8 +221,8 @@ class WilayaController extends Controller
     {
         $validated = $request->validate([
             'name' => 'sometimes|string|max:255',
-            'region_id' => 'sometimes|in:east,west,center,south',
-            'region_name' => 'sometimes|string|max:255',
+            'region_id' => 'nullable|string|max:255',
+            'region_name' => 'nullable|string|max:255',
             'delegate_id' => 'nullable|exists:users,id',
             'status' => 'sometimes|in:active,limited,inactive',
         ]);

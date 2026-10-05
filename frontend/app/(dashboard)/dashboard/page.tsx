@@ -20,7 +20,8 @@ import { StatusChart } from '@/components/charts/status-chart';
 import { OrdersTable } from '@/components/tables/orders-table';
 import { DelegatePerformance } from '@/components/features/dashboard/delegate-performance';
 import { NotificationsPanel } from '@/components/features/dashboard/notifications-panel';
-import { reportsService, type ReportsKPIs } from '@/services/reports';
+import { ReportsKPIs, reportsService } from '@/services/reports';
+import { useAuthStore } from '@/store';
 import {
   ShoppingCart,
   DollarSign,
@@ -49,6 +50,7 @@ import { ExecutiveSummaryPdfViewer } from '@/features/reports/components/executi
 import type { ClientsByRegionReportResponse } from '@/services/reports';
 
 export default function DashboardPage() {
+  const user = useAuthStore((s) => s.user);
   const [currentDate, setCurrentDate] = useState<string>('');
   const [currentTime, setCurrentTime] = useState<string>('');
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -168,7 +170,7 @@ export default function DashboardPage() {
             Tableau de bord d'administration
           </h1>
           <p className="text-sm text-muted-foreground font-medium">
-            Bienvenue, Administrateur.
+            Bienvenue, {user?.name || user?.username || 'Administrateur'}.
           </p>
         </div>
 

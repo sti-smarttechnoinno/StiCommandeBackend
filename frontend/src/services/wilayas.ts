@@ -99,12 +99,13 @@ export const wilayasService = {
     return data.data;
   },
 
-  async create(wilaya: Partial<WilayaRow>): Promise<WilayaRow> {
+  async create(wilaya: Partial<WilayaRow> & { delegate_id?: string | null }): Promise<WilayaRow> {
     const payload = {
       code: wilaya.code,
       name: wilaya.name,
       region_id: wilaya.regionId,
       region_name: wilaya.regionName,
+      delegate_id: wilaya.delegate_id ?? wilaya.delegate?.id,
       clients_count: wilaya.clients,
       orders_month: wilaya.ordersMonth,
       monthly_revenue: wilaya.monthlyRevenue,
@@ -114,11 +115,12 @@ export const wilayasService = {
     return data.data;
   },
 
-  async update(id: string, wilaya: Partial<WilayaRow>): Promise<WilayaRow> {
+  async update(id: string, wilaya: Partial<WilayaRow> & { delegate_id?: string | null }): Promise<WilayaRow> {
     const payload = {
       name: wilaya.name,
       region_id: wilaya.regionId,
       region_name: wilaya.regionName,
+      delegate_id: wilaya.delegate_id ?? wilaya.delegate?.id,
       clients_count: wilaya.clients,
       orders_month: wilaya.ordersMonth,
       monthly_revenue: wilaya.monthlyRevenue,

@@ -15,6 +15,7 @@ import { KPICards } from '@/features/wilayas/components/kpi-cards';
 import { WilayasTable } from '@/features/wilayas/components/wilayas-table';
 import { AnalyticsPanel } from '@/features/wilayas/components/analytics-panel';
 import { WilayaDrawer } from '@/features/wilayas/components/wilaya-drawer';
+import { CreateWilayaDialog } from '@/features/wilayas/components/create-wilaya-dialog';
 import { Plus, Download, RefreshCw, Calendar } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -25,6 +26,7 @@ export default function WilayasPage() {
   const [currentDate, setCurrentDate] = useState<string>('Friday, July 31, 2026');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -110,7 +112,7 @@ export default function WilayasPage() {
           {/* New Wilaya Primary Button */}
           <Button
             size="sm"
-            onClick={() => toast.success('Add Wilaya Dialog')}
+            onClick={() => setIsCreateOpen(true)}
             className="gap-2 rounded-full h-9 px-4 font-bold text-xs bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary text-primary-foreground shadow-md shadow-primary/20 hover:shadow-lg hover:shadow-primary/30 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
           >
             <Plus className="h-3.5 w-3.5 text-primary-foreground" />
@@ -132,6 +134,15 @@ export default function WilayasPage() {
         <h2 className="text-lg font-bold text-foreground tracking-tight">Performance & Regional Summary</h2>
         <AnalyticsPanel key={`analytics-${refreshTrigger}`} />
       </div>
+
+      {/* Create Wilaya Dialog */}
+      <CreateWilayaDialog
+        open={isCreateOpen}
+        onOpenChange={setIsCreateOpen}
+        onCreated={() => {
+          handleRefresh();
+        }}
+      />
 
       {/* Wilaya Details Drawer */}
       {selectedWilaya && (
