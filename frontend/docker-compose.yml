@@ -6,10 +6,10 @@ services:
       args:
         # NEXT_PUBLIC_* vars are inlined into the client bundle at BUILD time,
         # not read at container runtime — they must be passed as build args,
-        # not as `environment:` below. Set NEXT_PUBLIC_API_URL / _WS_URL in
-        # your .env (or Jenkins --build-arg) before `docker compose build`.
+        # not as `environment:` below. Leave NEXT_PUBLIC_WS_URL empty to let the
+        # client derive it from window.location (same-origin /ws behind nginx).
         NEXT_PUBLIC_API_URL: "${NEXT_PUBLIC_API_URL:-http://localhost:8000/api}"
-        NEXT_PUBLIC_WS_URL: "${NEXT_PUBLIC_WS_URL:-ws://localhost:8085}"
+        NEXT_PUBLIC_WS_URL: "${NEXT_PUBLIC_WS_URL:-}"
     image: sticommande-frontend:latest
     container_name: sticommande-frontend
     restart: unless-stopped

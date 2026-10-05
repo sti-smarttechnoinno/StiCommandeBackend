@@ -224,14 +224,29 @@ function initSharedWebSocket() {
   }
 
   const getWsUrl = () => {
+    const configured = (
+      process.env.NEXT_PUBLIC_WEBSOCKET_URL ||
+      process.env.NEXT_PUBLIC_WS_URL ||
+      ''
+    ).trim();
+
     if (typeof window !== 'undefined') {
-      const hostname = window.location.hostname;
-      if (hostname && hostname !== 'localhost' && hostname !== '127.0.0.1') {
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        return `${protocol}//${hostname}:8085`;
+      const { hostname, port, protocol } = window.location;
+      const wsProtocol = protocol === 'https:' ? 'wss:' : 'ws:';
+      const isLocal = hostname === 'localhost' || hostname === '127.0.0.1';
+
+      if (configured) return configured;
+
+      // Frontend served directly by Next.js (:3000) -> hub port on the same host
+      if (port === '3000') return `${wsProtocol}//${hostname}:8085`;
+
+      // Behind the nginx gateway (80/443/any port) -> same origin, proxied to /ws
+      if (!isLocal) {
+        return `${wsProtocol}//${hostname}${port ? `:${port}` : ''}/ws`;
       }
     }
-    return process.env.NEXT_PUBLIC_WEBSOCKET_URL || 'ws://localhost:8085';
+
+    return configured || 'ws://localhost:8085';
   };
 
   const wsCustomUrl = getWsUrl();

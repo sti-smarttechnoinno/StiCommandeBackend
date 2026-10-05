@@ -18,16 +18,34 @@ touch /var/www/commande/backend/storage/logs/laravel.log
 # Ensure initial permissions
 chown -R www-data:www-data /var/www/commande/backend/storage /var/www/commande/backend/bootstrap/cache
 chmod -R 775 /var/www/commande/backend/storage /var/www/commande/backend/bootstrap/cache
-chmod -R 777 /var/www/commande/backend/storage/logs
 
 # Export runtime flags with sensible defaults for supervisor
 export START_WEBSOCKET="${START_WEBSOCKET:-true}"
 export START_QUEUE_WORKER="${START_QUEUE_WORKER:-false}"
 
-# Generate application key if not set
+# Resolve the application key: env var wins, then a key persisted in the
+# storage volume, otherwise generate one and persist it for the next boot.
+KEY_FILE="/var/www/commande/backend/storage/app/.app_key"
 if [ -z "$APP_KEY" ]; then
-    echo "Notice: APP_KEY not provided. Generating application key..."
-    php artisan key:generate --force || true
+    if [ -s "$KEY_FILE" ]; then
+        APP_KEY="$(cat "$KEY_FILE")"
+        export APP_KEY
+        echo "APP_KEY loaded from $KEY_FILE"
+    else
+        echo "APP_KEY not provided - generating a new application key..."
+        mkdir -p /var/www/commande/backend/storage/app
+        APP_KEY="$(php artisan key:generate --show 2>/dev/null | grep -oE 'base64:[A-Za-z0-9+/=]+' | head -n 1)"
+        if [ -n "$APP_KEY" ]; then
+            export APP_KEY
+            printf '%s\n' "$APP_KEY" > "$KEY_FILE"
+            chmod 600 "$KEY_FILE"
+            chown www-data:www-data "$KEY_FILE" || true
+            echo "New APP_KEY persisted to $KEY_FILE (set APP_KEY in .env for a fixed key)."
+        else
+            echo "ERROR: unable to generate APP_KEY" >&2
+            exit 1
+        fi
+    fi
 fi
 
 # Run database migrations if enabled
@@ -56,7 +74,6 @@ fi
 touch /var/www/commande/backend/storage/logs/laravel.log
 chown -R www-data:www-data /var/www/commande/backend/storage /var/www/commande/backend/bootstrap/cache
 chmod -R 775 /var/www/commande/backend/storage /var/www/commande/backend/bootstrap/cache
-chmod -R 777 /var/www/commande/backend/storage/logs
 
 # Validate Nginx and PHP-FPM configurations
 nginx -t || { echo "ERROR: Nginx configuration test failed!"; exit 1; }

@@ -113,8 +113,7 @@ RUN rm -rf /var/www/commande/backend/bootstrap/cache/*.php \
     && echo '{}' > /var/www/commande/backend/public/build/manifest.json \
     && touch /var/www/commande/backend/storage/logs/laravel.log \
     && chown -R www-data:www-data /var/www/commande/backend/storage /var/www/commande/backend/bootstrap/cache \
-    && chmod -R 775 /var/www/commande/backend/storage /var/www/commande/backend/bootstrap/cache \
-    && chmod -R 777 /var/www/commande/backend/storage/logs
+    && chmod -R 775 /var/www/commande/backend/storage /var/www/commande/backend/bootstrap/cache
 
 # Expose HTTP port (80) and WebSocket Hub port (8085)
 EXPOSE 80 8085

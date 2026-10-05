@@ -15,10 +15,18 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
+# Emits .next/standalone (required by the runner stage below)
+ARG DOCKER_BUILD=true
+ENV DOCKER_BUILD=$DOCKER_BUILD
+
 ARG NEXT_PUBLIC_API_URL=http://localhost:8000/api
-ARG NEXT_PUBLIC_WS_URL=ws://localhost:8085
+# Empty by default: the client derives the WebSocket URL from window.location
+# (same origin /ws behind the nginx gateway). Pass an explicit URL only to override.
+ARG NEXT_PUBLIC_WS_URL=
+ARG NEXT_PUBLIC_WEBSOCKET_URL=
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_WS_URL=$NEXT_PUBLIC_WS_URL
+ENV NEXT_PUBLIC_WEBSOCKET_URL=$NEXT_PUBLIC_WEBSOCKET_URL
 ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN npm run build
