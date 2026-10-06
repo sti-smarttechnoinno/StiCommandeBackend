@@ -14,19 +14,39 @@ import {
 import { Calendar, ShoppingBag } from 'lucide-react';
 import { EditOrderForm } from '@/features/orders/components/edit-order-form';
 import { RoleGuard } from '@/components/auth/role-guard';
+import { ordersService } from '@/services/orders';
+import { mockOrders } from '@/features/orders/mock-data';
 
 export default function EditOrderPage() {
   const params = useParams();
   const id = (params?.id as string) || '';
   const [mounted, setMounted] = useState(false);
   const [currentDate, setCurrentDate] = useState<string>('');
+  const [orderCode, setOrderCode] = useState<string>('');
 
   useEffect(() => {
     setMounted(true);
     setCurrentDate(format(new Date(), 'EEEE d MMMM yyyy', { locale: fr }));
-  }, []);
+
+    if (id) {
+      ordersService.get(id)
+        .then((data) => {
+          if (data?.order_code) {
+            setOrderCode(data.order_code);
+          }
+        })
+        .catch(() => {
+          const mock = mockOrders.find((m) => m.id.toLowerCase() === id.toLowerCase());
+          if (mock?.orderNumber) {
+            setOrderCode(mock.orderNumber);
+          }
+        });
+    }
+  }, [id]);
 
   if (!mounted) return null;
+
+  const displayCode = orderCode || (id.length > 8 ? `#${id.slice(0, 8)}` : `#${id}`);
 
   return (
     <RoleGuard requiredPermission="orders.update">
@@ -49,8 +69,8 @@ export default function EditOrderPage() {
                 </BreadcrumbItem>
                 <BreadcrumbSeparator />
                 <BreadcrumbItem>
-                  <BreadcrumbLink href={`/orders/${id}`} className="text-muted-foreground text-xs hover:text-foreground transition-colors">
-                    #{id.length > 8 ? id.slice(0, 8) : id}
+                  <BreadcrumbLink href={`/orders/${id}`} className="text-muted-foreground text-xs hover:text-foreground transition-colors font-mono">
+                    {displayCode}
                   </BreadcrumbLink>
                 </BreadcrumbItem>
                 <BreadcrumbSeparator />
@@ -67,8 +87,9 @@ export default function EditOrderPage() {
                 <ShoppingBag className="h-6 w-6" />
               </div>
               <div>
-                <h1 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight">
-                  Modifier la commande #{id.length > 8 ? id.slice(0, 8) : id}
+                <h1 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight flex items-center gap-2">
+                  <span>Modifier la commande</span>
+                  <span className="font-mono text-primary font-extrabold">{displayCode}</span>
                 </h1>
                 <p className="text-sm text-muted-foreground">
                   Mettez à jour les informations client, articles commandés, modalités de paiement et instructions de livraison.

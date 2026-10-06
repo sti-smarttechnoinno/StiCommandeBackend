@@ -712,6 +712,7 @@ class OrderController extends Controller
             'items.*.reference' => 'nullable|string',
             'items.*.unit_price' => 'required_with:items|numeric|min:0',
             'items.*.quantity' => 'required_with:items|integer|min:1',
+            'items.*.discount_percent' => 'nullable|numeric|min:0|max:100',
             'validated_items' => 'nullable|array',
             'validated_items.*.id' => 'required_with:validated_items|string',
             'validated_items.*.quantity' => 'required_with:validated_items|integer|min:0',
@@ -770,7 +771,9 @@ class OrderController extends Controller
                     $reference = $item['reference'] ?? null;
                     $unitPrice = (float) ($item['unit_price'] ?? 0);
                     $quantity = (int) ($item['quantity'] ?? 1);
-                    $subtotal = $unitPrice * $quantity;
+                    $discountPercent = (float) ($item['discount_percent'] ?? 0);
+                    $netUnitPrice = $discountPercent > 0 ? $unitPrice * (1 - ($discountPercent / 100)) : $unitPrice;
+                    $subtotal = round($netUnitPrice * $quantity, 2);
                     $totalAmount += $subtotal;
 
                     $orderItemsData[] = [
