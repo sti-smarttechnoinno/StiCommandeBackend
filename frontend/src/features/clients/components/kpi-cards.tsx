@@ -10,9 +10,11 @@ import { Users, UserCheck, UserX, Target, ShoppingBag, TrendingUp, TrendingDown,
 interface KPIData {
   title: string;
   value: number;
+  formattedValue?: string;
   suffix?: string;
   prefix?: string;
   change: number;
+  changeLabel?: string;
   icon: React.ReactNode;
   iconColor: 'blue' | 'green' | 'gray' | 'amber' | 'red' | 'indigo' | 'teal';
   sparkline?: number[];
@@ -68,7 +70,11 @@ function KPICard({ kpi }: { kpi: KPIData }) {
             {kpi.title}
           </span>
           <div className="text-xl font-bold tracking-tight text-foreground">
-            <CountUp target={kpi.value} prefix={kpi.prefix} suffix={kpi.suffix} />
+            {kpi.formattedValue !== undefined ? (
+              <span>{kpi.formattedValue}</span>
+            ) : (
+              <CountUp target={kpi.value} prefix={kpi.prefix} suffix={kpi.suffix} />
+            )}
           </div>
         </div>
         <div
@@ -86,13 +92,21 @@ function KPICard({ kpi }: { kpi: KPIData }) {
           <span
             className={cn(
               'inline-flex items-center gap-0.5 text-[11px] font-bold px-1.5 py-0.5 rounded-md',
-              isPositive
+              kpi.changeLabel
+                ? 'bg-muted/50 text-muted-foreground'
+                : isPositive
                 ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
                 : 'bg-rose-500/10 text-rose-600 dark:text-rose-400'
             )}
           >
-            {isPositive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-            {isPositive ? `+${kpi.change}%` : `${kpi.change}%`}
+            {kpi.changeLabel ? (
+              <span>{kpi.changeLabel}</span>
+            ) : (
+              <>
+                {isPositive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                {isPositive ? `+${kpi.change}%` : `${kpi.change}%`}
+              </>
+            )}
           </span>
         </div>
         {kpi.sparkline && (
@@ -142,9 +156,11 @@ export function KPICards() {
         {
           title: 'Monthly Target',
           value: data.targetRevenue ?? 0,
+          formattedValue: (data.targetRevenue && data.targetRevenue > 0) ? undefined : 'Non défini',
           prefix: '',
           suffix: ' DA',
           change: data.trends.targetRevenue ?? 0,
+          changeLabel: (!data.targetRevenue || data.targetRevenue <= 0) ? 'Non configuré' : undefined,
           icon: <Target className="h-5 w-5" />,
           iconColor: 'amber',
           sparkline: data.sparklines?.targetRevenue || [0, 0, 0, 0, 0, 0, 0],

@@ -30,20 +30,27 @@ export function usePermissions() {
       if (isCommercial) {
         return [
           'orders.view', 'orders.create',
+          'delivery_notes.view',
           'clients.view', 'clients.create', 'clients.update',
+          'crm.view', 'crm.manage',
           'products.view'
         ].includes(permission);
       }
       if (isChargeCompte) {
         return [
           'orders.view', 'orders.update', 'orders.validate', 'orders.reject',
+          'delivery_notes.view', 'delivery_notes.create', 'delivery_notes.manage',
+          'sales_journal.view', 'sales_journal.export',
           'clients.view',
+          'crm.view',
+          'encaissements.view',
           'products.view'
         ].includes(permission);
       }
       if (isWarehouse) {
         return [
           'orders.view', 'orders.update',
+          'delivery_notes.view', 'delivery_notes.create', 'delivery_notes.manage',
           'products.view'
         ].includes(permission);
       }

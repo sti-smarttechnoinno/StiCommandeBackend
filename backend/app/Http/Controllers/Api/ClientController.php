@@ -532,9 +532,6 @@ class ClientController extends Controller
             ->where('month', $currentMonth)
             ->whereIn('client_id', (clone $clientBase)->pluck('id'))
             ->sum('target_revenue');
-        if ($totalTargetRevenue <= 0) {
-            $totalTargetRevenue = round((float) (clone $clientBase)->sum('total_spent') * 1.2, 2);
-        }
 
         return response()->json([
             'totalClients' => $totalClients,
@@ -606,26 +603,6 @@ class ClientController extends Controller
                     'percent' => $percent,
                 ];
             });
-
-        if ($objectivePerformance->isEmpty()) {
-            $objectivePerformance = (clone $clientBase)->select('clients.name', DB::raw('COALESCE(SUM(orders.total_amount), clients.total_spent) as achieved'))
-                ->leftJoin('orders', 'clients.id', '=', 'orders.client_id')
-                ->groupBy('clients.id', 'clients.name', 'clients.total_spent')
-                ->orderByDesc('achieved')
-                ->limit(4)
-                ->get()
-                ->map(function ($c) {
-                    $achieved = (float) $c->achieved;
-                    $target = max(100000, round($achieved * 1.25, -3));
-                    $percent = $target > 0 ? round(($achieved / $target) * 100, 1) : 0;
-                    return [
-                        'name' => $c->name,
-                        'target' => $target,
-                        'achieved' => $achieved,
-                        'percent' => $percent,
-                    ];
-                });
-        }
 
         $topDelegatesQuery = User::whereIn('users.role', ['delegate', 'commercial', 'delegue']);
         if ($authUser && $authUser->isRestrictedByRegion()) {

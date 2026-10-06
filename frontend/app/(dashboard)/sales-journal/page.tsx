@@ -18,6 +18,8 @@ import { SalesJournalKPICards } from '@/features/sales-journal/components/sales-
 import { SalesJournalFilters } from '@/features/sales-journal/components/sales-journal-filters';
 import { SalesJournalTable } from '@/features/sales-journal/components/sales-journal-table';
 import { ImportSalesJournalDialog } from '@/features/sales-journal/components/import-sales-journal-dialog';
+import { RoleGuard } from '@/components/auth/role-guard';
+import { usePermissions } from '@/hooks/use-permissions';
 import {
   salesJournalService,
   SalesJournalRecord,
@@ -26,6 +28,7 @@ import {
 } from '@/services/sales-journal';
 
 export default function SalesJournalPage() {
+  const { can } = usePermissions();
   const [mounted, setMounted] = useState(false);
   const [currentDate, setCurrentDate] = useState<string>('');
   const [refreshKey, setRefreshKey] = useState(0);
@@ -194,86 +197,91 @@ export default function SalesJournalPage() {
   if (!mounted) return null;
 
   return (
-    <div className="space-y-8">
-      {/* Page Header matching DeliveryNotes layout */}
-      <div className="flex items-center justify-between flex-wrap gap-4 pb-4 border-b border-border/40">
-        <div className="space-y-1">
-          <Breadcrumb>
-            <BreadcrumbList>
-              <BreadcrumbItem>
-                <BreadcrumbLink href="/dashboard" className="text-muted-foreground text-xs hover:text-foreground transition-colors">
-                  Home
-                </BreadcrumbLink>
-              </BreadcrumbItem>
-              <BreadcrumbSeparator />
-              <BreadcrumbItem>
-                <BreadcrumbLink href="/orders" className="text-muted-foreground text-xs hover:text-foreground transition-colors">
-                  Vente
-                </BreadcrumbLink>
-              </BreadcrumbItem>
-              <BreadcrumbSeparator />
-              <BreadcrumbItem>
-                <BreadcrumbLink href="/sales-journal" className="text-foreground text-xs font-semibold capitalize">
-                  Journal de Vente
-                </BreadcrumbLink>
-              </BreadcrumbItem>
-            </BreadcrumbList>
-          </Breadcrumb>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight">
-              Journal de Vente
-            </h1>
-            <div className="px-2.5 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-bold border border-primary/20 flex items-center gap-1.5">
-              <FileSpreadsheet className="h-3 w-3" />
-              <span>Ventes ERP</span>
+    <RoleGuard requiredPermission="sales_journal.view">
+      <div className="space-y-8">
+        {/* Page Header matching DeliveryNotes layout */}
+        <div className="flex items-center justify-between flex-wrap gap-4 pb-4 border-b border-border/40">
+          <div className="space-y-1">
+            <Breadcrumb>
+              <BreadcrumbList>
+                <BreadcrumbItem>
+                  <BreadcrumbLink href="/dashboard" className="text-muted-foreground text-xs hover:text-foreground transition-colors">
+                    Home
+                  </BreadcrumbLink>
+                </BreadcrumbItem>
+                <BreadcrumbSeparator />
+                <BreadcrumbItem>
+                  <BreadcrumbLink href="/orders" className="text-muted-foreground text-xs hover:text-foreground transition-colors">
+                    Vente
+                  </BreadcrumbLink>
+                </BreadcrumbItem>
+                <BreadcrumbSeparator />
+                <BreadcrumbItem>
+                  <BreadcrumbLink href="/sales-journal" className="text-foreground text-xs font-semibold capitalize">
+                    Journal de Vente
+                  </BreadcrumbLink>
+                </BreadcrumbItem>
+              </BreadcrumbList>
+            </Breadcrumb>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight">
+                Journal de Vente
+              </h1>
+              <div className="px-2.5 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-bold border border-primary/20 flex items-center gap-1.5">
+                <FileSpreadsheet className="h-3 w-3" />
+                <span>Ventes ERP</span>
+              </div>
             </div>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            Suivi et réconciliation des opérations de vente issues de l&apos;ERP externe avec les données STI.
-          </p>
-        </div>
-
-        {/* Action Toolbar matching DeliveryNotes buttons */}
-        <div className="flex items-center gap-2.5 flex-wrap">
-          {/* Date Badge */}
-          <div className="flex items-center gap-2 text-xs font-semibold text-foreground bg-card/90 backdrop-blur-md px-3.5 py-2 rounded-full border border-border/70 shadow-xs">
-            <Calendar className="h-3.5 w-3.5 text-primary" />
-            <span>{currentDate}</span>
+            <p className="text-sm text-muted-foreground">
+              Suivi et réconciliation des opérations de vente issues de l&apos;ERP externe avec les données STI.
+            </p>
           </div>
 
-          {/* Export Button */}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleExportCSV}
-            className="gap-2 rounded-full h-9 px-4 font-semibold text-xs bg-card hover:bg-muted/80 text-foreground border-border/70 shadow-xs hover:shadow-sm transition-all duration-200"
-          >
-            <Download className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
-            <span>Export CSV</span>
-          </Button>
+          {/* Action Toolbar matching DeliveryNotes buttons */}
+          <div className="flex items-center gap-2.5 flex-wrap">
+            {/* Date Badge */}
+            <div className="flex items-center gap-2 text-xs font-semibold text-foreground bg-card/90 backdrop-blur-md px-3.5 py-2 rounded-full border border-border/70 shadow-xs">
+              <Calendar className="h-3.5 w-3.5 text-primary" />
+              <span>{currentDate}</span>
+            </div>
 
-          {/* Refresh Button */}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleRefresh}
-            className="gap-2 rounded-full h-9 px-4 font-semibold text-xs bg-card hover:bg-muted/80 text-foreground border-border/70 shadow-xs hover:shadow-sm transition-all duration-200"
-          >
-            <RefreshCw className={cn('h-3.5 w-3.5 text-amber-500 transition-transform duration-700', isRefreshing && 'animate-spin')} />
-            <span>Actualiser</span>
-          </Button>
+            {/* Export Button */}
+            {can('sales_journal.export') && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExportCSV}
+                className="gap-2 rounded-full h-9 px-4 font-semibold text-xs bg-card hover:bg-muted/80 text-foreground border-border/70 shadow-xs hover:shadow-sm transition-all duration-200"
+              >
+                <Download className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                <span>Export CSV</span>
+              </Button>
+            )}
 
-          {/* Primary Action: Import ERP File */}
-          <Button
-            size="sm"
-            onClick={() => setIsImportOpen(true)}
-            className="gap-2 rounded-full h-9 px-4 font-bold text-xs bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary text-primary-foreground shadow-md shadow-primary/20 hover:shadow-lg hover:shadow-primary/30 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
-          >
-            <UploadCloud className="h-3.5 w-3.5 text-primary-foreground" />
-            <span>Importer Fichier ERP</span>
-          </Button>
+            {/* Refresh Button */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefresh}
+              className="gap-2 rounded-full h-9 px-4 font-semibold text-xs bg-card hover:bg-muted/80 text-foreground border-border/70 shadow-xs hover:shadow-sm transition-all duration-200"
+            >
+              <RefreshCw className={cn('h-3.5 w-3.5 text-amber-500 transition-transform duration-700', isRefreshing && 'animate-spin')} />
+              <span>Actualiser</span>
+            </Button>
+
+            {/* Primary Action: Import ERP File */}
+            {can('sales_journal.import') && (
+              <Button
+                size="sm"
+                onClick={() => setIsImportOpen(true)}
+                className="gap-2 rounded-full h-9 px-4 font-bold text-xs bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary text-primary-foreground shadow-md shadow-primary/20 hover:shadow-lg hover:shadow-primary/30 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+              >
+                <UploadCloud className="h-3.5 w-3.5 text-primary-foreground" />
+                <span>Importer Fichier ERP</span>
+              </Button>
+            )}
+          </div>
         </div>
-      </div>
 
       {/* KPI Cards in DeliveryNotes 6-grid style */}
       <SalesJournalKPICards kpis={kpis} loading={loading} />
@@ -355,5 +363,6 @@ export default function SalesJournalPage() {
         lastImportAt={lastImportAt}
       />
     </div>
+    </RoleGuard>
   );
 }

@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/breadcrumb';
 import { Truck } from 'lucide-react';
 import { CreateDeliveryNoteForm } from '@/features/delivery-notes/components/create-delivery-note-form';
+import { RoleGuard } from '@/components/auth/role-guard';
 
 export default function NewDeliveryNotePage() {
   const [mounted, setMounted] = useState(false);
@@ -21,7 +22,8 @@ export default function NewDeliveryNotePage() {
   if (!mounted) return null;
 
   return (
-    <div className="space-y-8 pb-10">
+    <RoleGuard requiredPermission="delivery_notes.create">
+      <div className="space-y-8 pb-10">
       {/* Top Breadcrumb & Banner */}
       <div className="flex items-center justify-between flex-wrap gap-4 pb-4 border-b border-border/40">
         <div className="space-y-1">
@@ -66,5 +68,6 @@ export default function NewDeliveryNotePage() {
       {/* Main Form Component */}
       <CreateDeliveryNoteForm />
     </div>
+    </RoleGuard>
   );
 }

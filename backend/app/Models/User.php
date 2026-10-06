@@ -137,8 +137,12 @@ class User extends Authenticatable
         if ($this->isAdmin()) {
             return [
                 'orders.view', 'orders.create', 'orders.update', 'orders.validate', 'orders.reject', 'orders.delete',
+                'delivery_notes.view', 'delivery_notes.create', 'delivery_notes.manage',
+                'sales_journal.view', 'sales_journal.export', 'sales_journal.import',
                 'clients.view', 'clients.create', 'clients.update', 'clients.delete',
                 'clients.update_solde', 'clients.update_encaissement',
+                'crm.view', 'crm.manage',
+                'encaissements.view', 'encaissements.manage',
                 'products.view', 'products.manage',
                 'reports.view', 'reports.export',
                 'users.manage', 'settings.manage', '*'
@@ -159,7 +163,9 @@ class User extends Authenticatable
         if ($this->role === 'commercial' || $this->role === 'delegate' || $slug === 'commercial') {
             return [
                 'orders.view', 'orders.create',
+                'delivery_notes.view',
                 'clients.view', 'clients.create', 'clients.update',
+                'crm.view', 'crm.manage',
                 'products.view'
             ];
         }
@@ -167,7 +173,11 @@ class User extends Authenticatable
         if ($this->role === 'charge_compte') {
             return [
                 'orders.view', 'orders.update', 'orders.validate', 'orders.reject',
+                'delivery_notes.view', 'delivery_notes.create', 'delivery_notes.manage',
+                'sales_journal.view', 'sales_journal.export',
                 'clients.view',
+                'crm.view',
+                'encaissements.view',
                 'products.view'
             ];
         }
@@ -175,6 +185,7 @@ class User extends Authenticatable
         if ($this->role === 'warehouse') {
             return [
                 'orders.view', 'orders.update',
+                'delivery_notes.view', 'delivery_notes.create', 'delivery_notes.manage',
                 'products.view'
             ];
         }

@@ -69,6 +69,26 @@ class RoleController extends Controller
                 ],
             ],
             [
+                'id' => 'delivery_notes',
+                'name' => 'Bons de Livraison',
+                'description' => 'Gestion des expéditions et bons de livraison (BL)',
+                'permissions' => [
+                    ['key' => 'delivery_notes.view', 'label' => 'Consulter les bons de livraison', 'description' => 'Voir la liste et les détails des bons de livraison'],
+                    ['key' => 'delivery_notes.create', 'label' => 'Créer des bons de livraison', 'description' => 'Créer manuellement ou générer un bon de livraison'],
+                    ['key' => 'delivery_notes.manage', 'label' => 'Gérer les statuts BL', 'description' => 'Changer les statuts (marquer livré, en transit, etc.)'],
+                ],
+            ],
+            [
+                'id' => 'sales_journal',
+                'name' => 'Journal de Vente',
+                'description' => 'Opérations de vente, facturation et export du journal',
+                'permissions' => [
+                    ['key' => 'sales_journal.view', 'label' => 'Consulter le journal de vente', 'description' => 'Accès aux écritures du journal de vente et statistiques'],
+                    ['key' => 'sales_journal.export', 'label' => 'Exporter le journal de vente', 'description' => 'Exporter les données de vente au format Excel / CSV'],
+                    ['key' => 'sales_journal.import', 'label' => 'Importer le journal de vente', 'description' => 'Importer et synchroniser des journaux de vente'],
+                ],
+            ],
+            [
                 'id' => 'clients',
                 'name' => 'Clients & Points de Vente',
                 'description' => 'Portefeuille clients et points de vente partenaires',
@@ -79,6 +99,24 @@ class RoleController extends Controller
                     ['key' => 'clients.delete', 'label' => 'Supprimer des clients', 'description' => 'Désactiver ou supprimer des comptes clients'],
                     ['key' => 'clients.update_solde', 'label' => 'Mettre à jour les soldes (Recouvrement)', 'description' => 'Importer et synchroniser les soldes et créances des clients'],
                     ['key' => 'clients.update_encaissement', 'label' => 'Mettre à jour les encaissements', 'description' => 'Importer et synchroniser le journal des encaissements et règlements'],
+                ],
+            ],
+            [
+                'id' => 'crm',
+                'name' => 'CRM & Pipeline',
+                'description' => 'Gestion de la prospection, pipeline d\'opportunités, devis et visites terrain',
+                'permissions' => [
+                    ['key' => 'crm.view', 'label' => 'Consulter le CRM & Pipeline', 'description' => 'Visualiser le pipeline, les devis, leads et visites terrain'],
+                    ['key' => 'crm.manage', 'label' => 'Gérer le CRM & Pipeline', 'description' => 'Créer et modifier des opportunités, devis, leads et visites'],
+                ],
+            ],
+            [
+                'id' => 'encaissements',
+                'name' => 'Encaissements',
+                'description' => 'Gestion et suivi de la trésorerie, règlements et encaissements',
+                'permissions' => [
+                    ['key' => 'encaissements.view', 'label' => 'Consulter les encaissements', 'description' => 'Accès au journal et KPIs des encaissements et règlements'],
+                    ['key' => 'encaissements.manage', 'label' => 'Gérer et importer les encaissements', 'description' => 'Importer et synchroniser les opérations d\'encaissement'],
                 ],
             ],
             [

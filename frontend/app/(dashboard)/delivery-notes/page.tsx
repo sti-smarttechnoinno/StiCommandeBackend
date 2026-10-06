@@ -18,10 +18,13 @@ import { DeliveryNotesKPICards } from '@/features/delivery-notes/components/deli
 import { DeliveryNotesFilters } from '@/features/delivery-notes/components/delivery-notes-filters';
 import { DeliveryNotesTable } from '@/features/delivery-notes/components/delivery-notes-table';
 import { DeliveryNoteModal } from '@/features/delivery-notes/components/delivery-note-modal';
+import { RoleGuard } from '@/components/auth/role-guard';
+import { usePermissions } from '@/hooks/use-permissions';
 import { deliveryNotesService } from '@/services/delivery-notes';
 import type { DeliveryNoteData } from '@/features/delivery-notes/types';
 
 export default function DeliveryNotesPage() {
+  const { can } = usePermissions();
   const [mounted, setMounted] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -134,124 +137,128 @@ export default function DeliveryNotesPage() {
   if (!mounted) return null;
 
   return (
-    <div className="space-y-8">
-      {/* Page Header */}
-      <div className="flex items-center justify-between flex-wrap gap-4 pb-4 border-b border-border/40">
-        <div className="space-y-1">
-          <Breadcrumb>
-            <BreadcrumbList>
-              <BreadcrumbItem>
-                <BreadcrumbLink href="/dashboard" className="text-muted-foreground text-xs hover:text-foreground transition-colors">
-                  Home
-                </BreadcrumbLink>
-              </BreadcrumbItem>
-              <BreadcrumbSeparator />
-              <BreadcrumbItem>
-                <BreadcrumbLink href="/orders" className="text-muted-foreground text-xs hover:text-foreground transition-colors">
-                  Commandes
-                </BreadcrumbLink>
-              </BreadcrumbItem>
-              <BreadcrumbSeparator />
-              <BreadcrumbItem>
-                <BreadcrumbLink href="/delivery-notes" className="text-foreground text-xs font-semibold capitalize">
-                  Bons de Livraison
-                </BreadcrumbLink>
-              </BreadcrumbItem>
-            </BreadcrumbList>
-          </Breadcrumb>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight">
-              Bons de Livraison
-            </h1>
-            <div className="px-2.5 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-bold border border-primary/20 flex items-center gap-1.5">
-              <Truck className="h-3 w-3" />
-              <span>Logistique</span>
+    <RoleGuard requiredPermission="delivery_notes.view">
+      <div className="space-y-8">
+        {/* Page Header */}
+        <div className="flex items-center justify-between flex-wrap gap-4 pb-4 border-b border-border/40">
+          <div className="space-y-1">
+            <Breadcrumb>
+              <BreadcrumbList>
+                <BreadcrumbItem>
+                  <BreadcrumbLink href="/dashboard" className="text-muted-foreground text-xs hover:text-foreground transition-colors">
+                    Home
+                  </BreadcrumbLink>
+                </BreadcrumbItem>
+                <BreadcrumbSeparator />
+                <BreadcrumbItem>
+                  <BreadcrumbLink href="/orders" className="text-muted-foreground text-xs hover:text-foreground transition-colors">
+                    Commandes
+                  </BreadcrumbLink>
+                </BreadcrumbItem>
+                <BreadcrumbSeparator />
+                <BreadcrumbItem>
+                  <BreadcrumbLink href="/delivery-notes" className="text-foreground text-xs font-semibold capitalize">
+                    Bons de Livraison
+                  </BreadcrumbLink>
+                </BreadcrumbItem>
+              </BreadcrumbList>
+            </Breadcrumb>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight">
+                Bons de Livraison
+              </h1>
+              <div className="px-2.5 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-bold border border-primary/20 flex items-center gap-1.5">
+                <Truck className="h-3 w-3" />
+                <span>Logistique</span>
+              </div>
             </div>
+            <p className="text-sm text-muted-foreground">
+              Suivi des expéditions générées automatiquement ou manuellement par tranches ou en direct.
+            </p>
           </div>
-          <p className="text-sm text-muted-foreground">
-            Suivi des expéditions générées automatiquement ou manuellement par tranches ou en direct.
-          </p>
-        </div>
 
-        {/* Action Toolbar */}
-        <div className="flex items-center gap-2.5 flex-wrap">
-          {/* Export Button */}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleExportCSV}
-            className="gap-2 rounded-full h-9 px-4 font-semibold text-xs bg-card hover:bg-muted/80 text-foreground border-border/70 shadow-xs hover:shadow-sm transition-all duration-200"
-          >
-            <Download className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
-            <span>Export CSV</span>
-          </Button>
-
-          {/* Refresh Button */}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleRefresh}
-            className="gap-2 rounded-full h-9 px-4 font-semibold text-xs bg-card hover:bg-muted/80 text-foreground border-border/70 shadow-xs hover:shadow-sm transition-all duration-200"
-          >
-            <RefreshCw className={cn("h-3.5 w-3.5 text-amber-500 transition-transform duration-700", isRefreshing && "animate-spin")} />
-            <span>Actualiser</span>
-          </Button>
-
-          {/* New Delivery Note Primary Button (at the right, matching other pages) */}
-          <Link href="/delivery-notes/new">
+          {/* Action Toolbar */}
+          <div className="flex items-center gap-2.5 flex-wrap">
+            {/* Export Button */}
             <Button
+              variant="outline"
               size="sm"
-              className="gap-2 rounded-full h-9 px-4 font-bold text-xs bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary text-primary-foreground shadow-md shadow-primary/20 hover:shadow-lg hover:shadow-primary/30 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+              onClick={handleExportCSV}
+              className="gap-2 rounded-full h-9 px-4 font-semibold text-xs bg-card hover:bg-muted/80 text-foreground border-border/70 shadow-xs hover:shadow-sm transition-all duration-200"
             >
-              <Plus className="h-3.5 w-3.5 text-primary-foreground" />
-              <span>Nouveau Bon de Livraison</span>
+              <Download className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+              <span>Export CSV</span>
             </Button>
-          </Link>
+
+            {/* Refresh Button */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefresh}
+              className="gap-2 rounded-full h-9 px-4 font-semibold text-xs bg-card hover:bg-muted/80 text-foreground border-border/70 shadow-xs hover:shadow-sm transition-all duration-200"
+            >
+              <RefreshCw className={cn("h-3.5 w-3.5 text-amber-500 transition-transform duration-700", isRefreshing && "animate-spin")} />
+              <span>Actualiser</span>
+            </Button>
+
+            {/* New Delivery Note Primary Button (at the right, matching other pages) */}
+            {can('delivery_notes.create') && (
+              <Link href="/delivery-notes/new">
+                <Button
+                  size="sm"
+                  className="gap-2 rounded-full h-9 px-4 font-bold text-xs bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary text-primary-foreground shadow-md shadow-primary/20 hover:shadow-lg hover:shadow-primary/30 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+                >
+                  <Plus className="h-3.5 w-3.5 text-primary-foreground" />
+                  <span>Nouveau Bon de Livraison</span>
+                </Button>
+              </Link>
+            )}
+          </div>
         </div>
+
+        {/* KPI Cards */}
+        <DeliveryNotesKPICards refreshKey={refreshKey} />
+
+        {/* Delivery Notes Table with Integrated Filters Header matching Orders */}
+        <DeliveryNotesTable
+          deliveryNotes={deliveryNotes}
+          loading={loading}
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          onPageChange={setPage}
+          onSelectDeliveryNote={handleOpenDetail}
+          onQuickMarkDelivered={handleQuickMarkDelivered}
+          filtersElement={
+            <DeliveryNotesFilters
+              search={search}
+              onSearchChange={(val) => {
+                setSearch(val);
+                setPage(1);
+              }}
+              status={status}
+              onStatusChange={(val) => {
+                setStatus(val);
+                setPage(1);
+              }}
+              validationType={validationType}
+              onValidationTypeChange={(val) => {
+                setValidationType(val);
+                setPage(1);
+              }}
+              onReset={handleResetFilters}
+            />
+          }
+        />
+
+        {/* Detail / Print Modal */}
+        <DeliveryNoteModal
+          deliveryNote={selectedDN}
+          open={modalOpen}
+          onOpenChange={setModalOpen}
+          onStatusUpdated={() => setRefreshKey((k) => k + 1)}
+        />
       </div>
-
-      {/* KPI Cards */}
-      <DeliveryNotesKPICards refreshKey={refreshKey} />
-
-      {/* Delivery Notes Table with Integrated Filters Header matching Orders */}
-      <DeliveryNotesTable
-        deliveryNotes={deliveryNotes}
-        loading={loading}
-        page={page}
-        totalPages={totalPages}
-        total={total}
-        onPageChange={setPage}
-        onSelectDeliveryNote={handleOpenDetail}
-        onQuickMarkDelivered={handleQuickMarkDelivered}
-        filtersElement={
-          <DeliveryNotesFilters
-            search={search}
-            onSearchChange={(val) => {
-              setSearch(val);
-              setPage(1);
-            }}
-            status={status}
-            onStatusChange={(val) => {
-              setStatus(val);
-              setPage(1);
-            }}
-            validationType={validationType}
-            onValidationTypeChange={(val) => {
-              setValidationType(val);
-              setPage(1);
-            }}
-            onReset={handleResetFilters}
-          />
-        }
-      />
-
-      {/* Detail / Print Modal */}
-      <DeliveryNoteModal
-        deliveryNote={selectedDN}
-        open={modalOpen}
-        onOpenChange={setModalOpen}
-        onStatusUpdated={() => setRefreshKey((k) => k + 1)}
-      />
-    </div>
+    </RoleGuard>
   );
 }

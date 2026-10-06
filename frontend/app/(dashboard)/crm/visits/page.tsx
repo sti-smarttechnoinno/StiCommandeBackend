@@ -22,6 +22,7 @@ import { VisitsTable } from '@/features/crm/components/visits-table';
 import { CreateVisitDialog } from '@/features/crm/components/create-visit-dialog';
 import { regionsService } from '@/services/regions';
 import { usePermissions } from '@/hooks/use-permissions';
+import { RoleGuard } from '@/components/auth/role-guard';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -53,7 +54,8 @@ export default function CrmVisitsPage() {
   };
 
   return (
-    <div className="space-y-8">
+    <RoleGuard requiredPermission="crm.view">
+      <div className="space-y-8">
       {/* Top Header / Breadcrumb & Actions */}
       <div className="flex items-center justify-between flex-wrap gap-4 pb-4 border-b border-border/40">
         <div className="space-y-1">
@@ -158,5 +160,6 @@ export default function CrmVisitsPage() {
         onOpenChange={setCreateOpen}
       />
     </div>
+    </RoleGuard>
   );
 }

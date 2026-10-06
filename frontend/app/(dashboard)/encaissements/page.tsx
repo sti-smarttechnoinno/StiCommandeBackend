@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/table';
 import { ImportEncaissementsDialog } from '@/features/clients/components/import-encaissements-dialog';
 import { usePermissions } from '@/hooks/use-permissions';
+import { RoleGuard } from '@/components/auth/role-guard';
 import {
   encaissementsService,
   EncaissementRecord,
@@ -220,9 +221,10 @@ export default function EncaissementsPage() {
   };
 
   return (
-    <div className="space-y-8 pb-12">
-      {/* 1. Page Header / Hero inside Encaissements Page */}
-      <div className="flex items-center justify-between flex-wrap gap-4 pb-4 border-b border-border/40">
+    <RoleGuard requiredPermission="encaissements.view">
+      <div className="space-y-8 pb-12">
+        {/* 1. Page Header / Hero inside Encaissements Page */}
+        <div className="flex items-center justify-between flex-wrap gap-4 pb-4 border-b border-border/40">
         <div className="space-y-1">
           <Breadcrumb>
             <BreadcrumbList>
@@ -1111,5 +1113,6 @@ export default function EncaissementsPage() {
         </div>
       </div>
     </div>
+    </RoleGuard>
   );
 }

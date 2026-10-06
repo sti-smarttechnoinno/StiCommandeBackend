@@ -47,9 +47,9 @@ import {
   Phone,
   Building2,
   ShieldCheck,
-  Check,
   ShoppingBag,
 } from 'lucide-react';
+import { RoleGuard } from '@/components/auth/role-guard';
 
 export default function DeliveryNoteDetailPage() {
   const params = useParams();
@@ -188,9 +188,10 @@ export default function DeliveryNoteDetailPage() {
   const items = deliveryNote.items || [];
 
   return (
-    <div className="space-y-8 pb-12">
-      {/* Top Breadcrumbs & Hero Action Bar (hidden on print) */}
-      <div className="print:hidden flex items-center justify-between flex-wrap gap-4 pb-4 border-b border-border/40">
+    <RoleGuard requiredPermission="delivery_notes.view">
+      <div className="space-y-8 pb-12">
+        {/* Top Breadcrumbs & Hero Action Bar (hidden on print) */}
+        <div className="print:hidden flex items-center justify-between flex-wrap gap-4 pb-4 border-b border-border/40">
         <div className="space-y-1.5">
           <Breadcrumb>
             <BreadcrumbList>
@@ -588,5 +589,6 @@ export default function DeliveryNoteDetailPage() {
         </div>
       </div>
     </div>
+    </RoleGuard>
   );
 }
