@@ -62,8 +62,10 @@ class RoleController extends Controller
                 'permissions' => [
                     ['key' => 'orders.view', 'label' => 'Consulter les commandes', 'description' => 'Accès aux listes et détails des commandes'],
                     ['key' => 'orders.create', 'label' => 'Créer des commandes', 'description' => 'Passer de nouvelles commandes pour les clients'],
-                    ['key' => 'orders.update', 'label' => 'Valider & Mettre à jour les statuts', 'description' => 'Validation administrative, partiel et changement de statut'],
-                    ['key' => 'orders.delete', 'label' => 'Annuler ou supprimer', 'description' => 'Rejet ou suppression de commandes'],
+                    ['key' => 'orders.update', 'label' => 'Modifier les commandes', 'description' => 'Mise à jour des coordonnées, adresses et articles'],
+                    ['key' => 'orders.validate', 'label' => 'Valider les commandes', 'description' => 'Validation administrative totale ou partielle des commandes'],
+                    ['key' => 'orders.reject', 'label' => 'Rejeter les commandes', 'description' => 'Rejet de commandes en attente avec motif'],
+                    ['key' => 'orders.delete', 'label' => 'Supprimer des commandes', 'description' => 'Suppression définitive de commandes'],
                 ],
             ],
             [

@@ -136,23 +136,29 @@ class User extends Authenticatable
     {
         if ($this->isAdmin()) {
             return [
-                'orders.view', 'orders.create', 'orders.update', 'orders.delete',
+                'orders.view', 'orders.create', 'orders.update', 'orders.validate', 'orders.reject', 'orders.delete',
                 'clients.view', 'clients.create', 'clients.update', 'clients.delete',
+                'clients.update_solde', 'clients.update_encaissement',
                 'products.view', 'products.manage',
                 'reports.view', 'reports.export',
                 'users.manage', 'settings.manage', '*'
             ];
         }
 
-        $role = $this->roleModel;
+        $slug = strtolower($this->role ?? '');
+        if (in_array($slug, ['delegate', 'delegue'])) {
+            $slug = 'commercial';
+        }
+
+        $role = Role::where('slug', $slug)->first() ?? $this->roleModel;
         if ($role && is_array($role->permissions)) {
             return $role->permissions;
         }
 
         // Fallbacks for standard legacy roles if not configured in table
-        if ($this->role === 'commercial' || $this->role === 'delegate') {
+        if ($this->role === 'commercial' || $this->role === 'delegate' || $slug === 'commercial') {
             return [
-                'orders.view', 'orders.create', 'orders.update',
+                'orders.view', 'orders.create',
                 'clients.view', 'clients.create', 'clients.update',
                 'products.view'
             ];
@@ -160,7 +166,7 @@ class User extends Authenticatable
 
         if ($this->role === 'charge_compte') {
             return [
-                'orders.view', 'orders.update',
+                'orders.view', 'orders.update', 'orders.validate', 'orders.reject',
                 'clients.view',
                 'products.view'
             ];

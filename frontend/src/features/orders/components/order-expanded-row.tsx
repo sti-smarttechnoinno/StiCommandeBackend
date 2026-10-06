@@ -12,6 +12,7 @@ import { MapPin, FileText, Package, CheckCircle2, Minus, Plus, RotateCcw, AlertC
 import { toast } from 'sonner';
 import { ordersService } from '@/services/orders';
 import { RejectOrderDialog } from './reject-order-dialog';
+import { usePermissions } from '@/hooks/use-permissions';
 
 interface OrderExpandedRowProps {
   order: ExtendedOrder;
@@ -21,6 +22,9 @@ interface OrderExpandedRowProps {
 
 export function OrderExpandedRow({ order, onUpdateStatus, onRejectOrder }: OrderExpandedRowProps) {
   const router = useRouter();
+  const { can } = usePermissions();
+  const canValidate = can('orders.validate');
+  const canReject = can('orders.reject');
   const [orderStatus, setOrderStatus] = useState<string>(order.status || 'pending');
   const [submitting, setSubmitting] = useState(false);
   const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
@@ -347,9 +351,9 @@ export function OrderExpandedRow({ order, onUpdateStatus, onRejectOrder }: Order
                       <td className="px-3 py-2.5 text-center">
                         <div className={cn(
                           "inline-flex items-center gap-1 rounded-lg p-0.5",
-                          (isFullyCompleted || isRejected) ? "bg-muted/30 border border-transparent" : "bg-muted/60 border border-border/50"
+                          (isFullyCompleted || isRejected || !canValidate) ? "bg-muted/30 border border-transparent" : "bg-muted/60 border border-border/50"
                         )}>
-                          {!isFullyCompleted && !isRejected && (
+                          {!isFullyCompleted && !isRejected && canValidate && (
                             <Button
                               type="button"
                               variant="ghost"
@@ -363,7 +367,7 @@ export function OrderExpandedRow({ order, onUpdateStatus, onRejectOrder }: Order
                             </Button>
                           )}
 
-                          {isFullyCompleted || isRejected ? (
+                          {isFullyCompleted || isRejected || !canValidate ? (
                             <span className="w-12 text-center font-bold text-xs px-1 text-muted-foreground">
                               {currentStepperVal}
                             </span>
@@ -390,7 +394,7 @@ export function OrderExpandedRow({ order, onUpdateStatus, onRejectOrder }: Order
                             />
                           )}
 
-                          {!isFullyCompleted && !isRejected && (
+                          {!isFullyCompleted && !isRejected && canValidate && (
                             <Button
                               type="button"
                               variant="ghost"
@@ -439,68 +443,74 @@ export function OrderExpandedRow({ order, onUpdateStatus, onRejectOrder }: Order
             </table>
           </div>
 
-          {/* Validation Action Buttons (Hidden when Order is Fully Validated or Rejected) */}
-          {!isFullyCompleted && !isRejected && (
+          {/* Validation Action Buttons (Hidden when Order is Fully Validated or Rejected, or when user lacks permission) */}
+          {!isFullyCompleted && !isRejected && (canValidate || canReject) && (
             <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
               <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleResetFull}
-                  className="h-8 text-xs font-semibold gap-1.5 rounded-lg border-border/60 hover:bg-muted"
-                >
-                  <RotateCcw className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span>Réinitialiser les Unités</span>
-                </Button>
-
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setIsRejectDialogOpen(true)}
-                  className="h-8 text-xs font-semibold gap-1.5 rounded-lg border-rose-500/30 text-rose-600 hover:bg-rose-500/10 hover:text-rose-700"
-                >
-                  <XCircle className="h-3.5 w-3.5" />
-                  <span>Rejeter la commande</span>
-                </Button>
-              </div>
-
-              <div className="flex items-center gap-2">
-                {isZeroSelection ? (
+                {canValidate && (
                   <Button
                     type="button"
+                    variant="outline"
                     size="sm"
-                    disabled
-                    className="h-8 text-xs font-bold gap-1.5 rounded-lg bg-muted text-muted-foreground opacity-60 cursor-not-allowed"
+                    onClick={handleResetFull}
+                    className="h-8 text-xs font-semibold gap-1.5 rounded-lg border-border/60 hover:bg-muted"
                   >
-                    <AlertCircle className="h-3.5 w-3.5" />
-                    <span>Sélectionnez les unités restantes à valider</span>
+                    <RotateCcw className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span>Réinitialiser les Unités</span>
                   </Button>
-                ) : isFullValidation ? (
+                )}
+
+                {canReject && (
                   <Button
                     type="button"
+                    variant="outline"
                     size="sm"
-                    disabled={submitting}
-                    onClick={handleValidateOrder}
-                    className="h-8 text-xs font-bold gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
+                    onClick={() => setIsRejectDialogOpen(true)}
+                    className="h-8 text-xs font-semibold gap-1.5 rounded-lg border-rose-500/30 text-rose-600 hover:bg-rose-500/10 hover:text-rose-700"
                   >
-                    {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
-                    <span>{isCurrentlyPartial ? `Valider le Reste (${newSelectedQtySum}/${totalRemainingToValidateQty} unités — ${formatCurrency(newSelectedAmountSum)})` : `Valider la commande (Validation Totale 100% — ${formatCurrency(newSelectedAmountSum)})`}</span>
-                  </Button>
-                ) : (
-                  <Button
-                    type="button"
-                    size="sm"
-                    disabled={submitting}
-                    onClick={handleValidateOrder}
-                    className="h-8 text-xs font-bold gap-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white shadow-xs"
-                  >
-                    {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <AlertCircle className="h-3.5 w-3.5" />}
-                    <span>{isCurrentlyPartial ? `Valider la Suite (${newSelectedQtySum}/${totalRemainingToValidateQty} unités restantes — ${formatCurrency(newSelectedAmountSum)})` : `Valider Partiellement (${newSelectedQtySum}/${totalOrderedQty} unités — ${formatCurrency(newSelectedAmountSum)})`}</span>
+                    <XCircle className="h-3.5 w-3.5" />
+                    <span>Rejeter la commande</span>
                   </Button>
                 )}
               </div>
+
+              {canValidate && (
+                <div className="flex items-center gap-2">
+                  {isZeroSelection ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled
+                      className="h-8 text-xs font-bold gap-1.5 rounded-lg bg-muted text-muted-foreground opacity-60 cursor-not-allowed"
+                    >
+                      <AlertCircle className="h-3.5 w-3.5" />
+                      <span>Sélectionnez les unités restantes à valider</span>
+                    </Button>
+                  ) : isFullValidation ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={submitting}
+                      onClick={handleValidateOrder}
+                      className="h-8 text-xs font-bold gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
+                    >
+                      {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                      <span>{isCurrentlyPartial ? `Valider le Reste (${newSelectedQtySum}/${totalRemainingToValidateQty} unités — ${formatCurrency(newSelectedAmountSum)})` : `Valider la commande (Validation Totale 100% — ${formatCurrency(newSelectedAmountSum)})`}</span>
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={submitting}
+                      onClick={handleValidateOrder}
+                      className="h-8 text-xs font-bold gap-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white shadow-xs"
+                    >
+                      {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <AlertCircle className="h-3.5 w-3.5" />}
+                      <span>{isCurrentlyPartial ? `Valider la Suite (${newSelectedQtySum}/${totalRemainingToValidateQty} unités restantes — ${formatCurrency(newSelectedAmountSum)})` : `Valider Partiellement (${newSelectedQtySum}/${totalOrderedQty} unités — ${formatCurrency(newSelectedAmountSum)})`}</span>
+                    </Button>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>

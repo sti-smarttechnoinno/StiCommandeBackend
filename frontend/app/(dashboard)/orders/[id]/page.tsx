@@ -733,31 +733,35 @@ export default function OrderDetailPage() {
             }
           `}</style>
 
-          {/* Quick status transitions based on current status (conditioned on orders.update permission) */}
-          {can('orders.update') ? (
+          {/* Quick status transitions based on current status (conditioned on granular permissions) */}
+          {(can('orders.update') || can('orders.validate') || can('orders.reject')) ? (
             <>
               {order.status === 'pending' && (
                 <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={submitting}
-                    onClick={() => setIsRejectDialogOpen(true)}
-                    className="gap-2 rounded-full h-9 px-3.5 font-semibold text-xs text-rose-600 border-rose-500/30 hover:bg-rose-500/10 transition-colors"
-                  >
-                    <XCircle className="h-3.5 w-3.5" />
-                    <span>Rejeter</span>
-                  </Button>
-                  <Button
-                    size="sm"
-                    disabled={submitting}
-                    onClick={handleApplyValidation}
-                    className="gap-2 rounded-full h-9 px-4 font-bold text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/20"
-                  >
-                    {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
-                    <span>Valider la Commande</span>
-                  </Button>
-                  {!isVirtualOnly && (
+                  {can('orders.reject') && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={submitting}
+                      onClick={() => setIsRejectDialogOpen(true)}
+                      className="gap-2 rounded-full h-9 px-3.5 font-semibold text-xs text-rose-600 border-rose-500/30 hover:bg-rose-500/10 transition-colors"
+                    >
+                      <XCircle className="h-3.5 w-3.5" />
+                      <span>Rejeter</span>
+                    </Button>
+                  )}
+                  {can('orders.validate') && (
+                    <Button
+                      size="sm"
+                      disabled={submitting}
+                      onClick={handleApplyValidation}
+                      className="gap-2 rounded-full h-9 px-4 font-bold text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/20"
+                    >
+                      {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                      <span>Valider la Commande</span>
+                    </Button>
+                  )}
+                  {!isVirtualOnly && can('orders.update') && (
                     <Button
                       size="sm"
                       disabled={submitting}
@@ -773,26 +777,30 @@ export default function OrderDetailPage() {
 
               {order.status === 'partially_validated' && (
                 <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={submitting}
-                    onClick={() => setIsRejectDialogOpen(true)}
-                    className="gap-2 rounded-full h-9 px-3.5 font-semibold text-xs text-rose-600 border-rose-500/30 hover:bg-rose-500/10 transition-colors"
-                  >
-                    <XCircle className="h-3.5 w-3.5" />
-                    <span>Rejeter</span>
-                  </Button>
-                  <Button
-                    size="sm"
-                    disabled={submitting}
-                    onClick={handleApplyValidation}
-                    className="gap-2 rounded-full h-9 px-4 font-bold text-xs bg-amber-600 hover:bg-amber-700 text-white shadow-md shadow-amber-600/20"
-                  >
-                    {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
-                    <span>Valider le Reste ({newSelectedQtySum} unités)</span>
-                  </Button>
-                  {!isVirtualOnly && (
+                  {can('orders.reject') && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={submitting}
+                      onClick={() => setIsRejectDialogOpen(true)}
+                      className="gap-2 rounded-full h-9 px-3.5 font-semibold text-xs text-rose-600 border-rose-500/30 hover:bg-rose-500/10 transition-colors"
+                    >
+                      <XCircle className="h-3.5 w-3.5" />
+                      <span>Rejeter</span>
+                    </Button>
+                  )}
+                  {can('orders.validate') && (
+                    <Button
+                      size="sm"
+                      disabled={submitting}
+                      onClick={handleApplyValidation}
+                      className="gap-2 rounded-full h-9 px-4 font-bold text-xs bg-amber-600 hover:bg-amber-700 text-white shadow-md shadow-amber-600/20"
+                    >
+                      {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                      <span>Valider le Reste ({newSelectedQtySum} unités)</span>
+                    </Button>
+                  )}
+                  {!isVirtualOnly && can('orders.update') && (
                     <Button
                       size="sm"
                       disabled={submitting}
@@ -865,16 +873,18 @@ export default function OrderDetailPage() {
                     <XCircle className="h-4 w-4" />
                     <span>{order.status === 'rejected' ? 'Commande Rejetée' : 'Commande Annulée'}</span>
                   </Badge>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={submitting}
-                    onClick={() => handleStatusUpdate('pending')}
-                    className="gap-2 rounded-full h-9 px-3.5 font-semibold text-xs border-border/70 hover:bg-muted"
-                  >
-                    <RotateCcw className="h-3.5 w-3.5" />
-                    <span>Réactiver</span>
-                  </Button>
+                  {can('orders.update') && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={submitting}
+                      onClick={() => handleStatusUpdate('pending')}
+                      className="gap-2 rounded-full h-9 px-3.5 font-semibold text-xs border-border/70 hover:bg-muted"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" />
+                      <span>Réactiver</span>
+                    </Button>
+                  )}
                 </>
               )}
             </>
@@ -1189,9 +1199,9 @@ export default function OrderDetailPage() {
                           <td className="px-3 py-3 text-center">
                             <div className={cn(
                               "inline-flex items-center gap-1 rounded-lg p-0.5",
-                              (isFullyCompleted || isRejected) ? "bg-muted/20 border border-transparent" : "bg-muted/50 border border-border/50"
+                              (isFullyCompleted || isRejected || !can('orders.validate')) ? "bg-muted/20 border border-transparent" : "bg-muted/50 border border-border/50"
                             )}>
-                              {!isFullyCompleted && !isRejected && (
+                              {!isFullyCompleted && !isRejected && can('orders.validate') && (
                                 <Button
                                   type="button"
                                   variant="ghost"
@@ -1205,7 +1215,7 @@ export default function OrderDetailPage() {
                                 </Button>
                               )}
 
-                              {isFullyCompleted || isRejected ? (
+                              {isFullyCompleted || isRejected || !can('orders.validate') ? (
                                 <span className="w-12 text-center font-bold text-xs px-1 text-muted-foreground">
                                   {currentVal}
                                 </span>
@@ -1232,7 +1242,7 @@ export default function OrderDetailPage() {
                                 />
                               )}
 
-                              {!isFullyCompleted && !isRejected && (
+                              {!isFullyCompleted && !isRejected && can('orders.validate') && (
                                 <Button
                                   type="button"
                                   variant="ghost"
@@ -1279,19 +1289,21 @@ export default function OrderDetailPage() {
               </div>
 
               {/* Action Stepper controls (bottom bar) */}
-              {!isFullyCompleted && !isRejected && (
+              {!isFullyCompleted && !isRejected && (can('orders.validate') || can('orders.reject')) && (
                 <div className="p-4 bg-muted/20 border-t border-border/30 flex items-center justify-between gap-3 flex-wrap">
                   <div className="flex items-center gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={handleResetUnits}
-                      className="h-8 text-xs font-semibold gap-1.5 rounded-lg border-border/70 hover:bg-muted"
-                    >
-                      <RotateCcw className="h-3.5 w-3.5 text-muted-foreground" />
-                      <span>Réinitialiser</span>
-                    </Button>
+                    {can('orders.validate') && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleResetUnits}
+                        className="h-8 text-xs font-semibold gap-1.5 rounded-lg border-border/70 hover:bg-muted"
+                      >
+                        <RotateCcw className="h-3.5 w-3.5 text-muted-foreground" />
+                        <span>Réinitialiser</span>
+                      </Button>
+                    )}
 
                     {can('orders.reject') && (
                       <Button
@@ -1306,7 +1318,7 @@ export default function OrderDetailPage() {
                       </Button>
                     )}
 
-                    {isCurrentlyPartial && totalRemainingToValidateQty > 0 && (
+                    {can('orders.validate') && isCurrentlyPartial && totalRemainingToValidateQty > 0 && (
                       <Button
                         type="button"
                         variant="secondary"
@@ -1320,41 +1332,43 @@ export default function OrderDetailPage() {
                     )}
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    {isZeroSelection ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        disabled
-                        className="h-8 text-xs font-bold gap-1.5 rounded-lg bg-muted text-muted-foreground opacity-60 cursor-not-allowed"
-                      >
-                        <AlertCircle className="h-3.5 w-3.5" />
-                        <span>Sélectionnez les unités à envoyer</span>
-                      </Button>
-                    ) : isFullValidation ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        disabled={submitting}
-                        onClick={handleApplyValidation}
-                        className="h-8 text-xs font-bold gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
-                      >
-                        {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
-                        <span>Valider et Tout Envoyer (Validation Totale 100%)</span>
-                      </Button>
-                    ) : (
-                      <Button
-                        type="button"
-                        size="sm"
-                        disabled={submitting}
-                        onClick={handleApplyValidation}
-                        className="h-8 text-xs font-bold gap-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white shadow-xs"
-                      >
-                        {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-                        <span>Valider et Envoyer le Lot ({newSelectedQtySum} unités)</span>
-                      </Button>
-                    )}
-                  </div>
+                  {can('orders.validate') && (
+                    <div className="flex items-center gap-2">
+                      {isZeroSelection ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          disabled
+                          className="h-8 text-xs font-bold gap-1.5 rounded-lg bg-muted text-muted-foreground opacity-60 cursor-not-allowed"
+                        >
+                          <AlertCircle className="h-3.5 w-3.5" />
+                          <span>Sélectionnez les unités à envoyer</span>
+                        </Button>
+                      ) : isFullValidation ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          disabled={submitting}
+                          onClick={handleApplyValidation}
+                          className="h-8 text-xs font-bold gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
+                        >
+                          {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                          <span>Valider et Tout Envoyer (Validation Totale 100%)</span>
+                        </Button>
+                      ) : (
+                        <Button
+                          type="button"
+                          size="sm"
+                          disabled={submitting}
+                          onClick={handleApplyValidation}
+                          className="h-8 text-xs font-bold gap-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white shadow-xs"
+                        >
+                          {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                          <span>Valider et Envoyer le Lot ({newSelectedQtySum} unités)</span>
+                        </Button>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 

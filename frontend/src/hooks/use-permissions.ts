@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useAuthStore } from '@/store';
 
@@ -29,14 +29,14 @@ export function usePermissions() {
     if (userPermissions.length === 0) {
       if (isCommercial) {
         return [
-          'orders.view', 'orders.create', 'orders.update',
+          'orders.view', 'orders.create',
           'clients.view', 'clients.create', 'clients.update',
           'products.view'
         ].includes(permission);
       }
       if (isChargeCompte) {
         return [
-          'orders.view', 'orders.update',
+          'orders.view', 'orders.update', 'orders.validate', 'orders.reject',
           'clients.view',
           'products.view'
         ].includes(permission);

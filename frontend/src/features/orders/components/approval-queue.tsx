@@ -9,6 +9,8 @@ import { toast } from 'sonner';
 import { Check, X, ShieldCheck, MapPin, Eye } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ordersService, type OrderData } from '@/services/orders';
+import { usePermissions } from '@/hooks/use-permissions';
+import { RejectOrderDialog } from '@/features/orders/components/reject-order-dialog';
 
 interface PendingOrderItem {
   id: string;
@@ -21,8 +23,10 @@ interface PendingOrderItem {
 
 export function ApprovalQueue() {
   const router = useRouter();
+  const { can } = usePermissions();
   const [orders, setOrders] = useState<PendingOrderItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [orderToReject, setOrderToReject] = useState<PendingOrderItem | null>(null);
 
   const fetchPendingOrders = () => {
     ordersService
@@ -75,18 +79,19 @@ export function ApprovalQueue() {
       const blCode = res?.delivery_note?.delivery_note_code;
       const blMsg = blCode ? ` (Bon de Livraison ${blCode} généré)` : '';
       toast.success(`Commande ${code} validée avec succès${blMsg}`);
-    } catch {
-      toast.error(`Échec de la validation de la commande ${code}`);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || `Échec de la validation de la commande ${code}`);
     }
   };
 
-  const handleReject = async (id: string, code: string) => {
+  const handleConfirmReject = async (id: string, reason: string) => {
     try {
-      await ordersService.updateStatus(id, 'cancelled');
+      await ordersService.updateStatus(id, 'rejected', undefined, undefined, reason);
       setOrders((prev) => prev.filter((o) => o.id !== id));
-      toast.error(`Commande ${code} annulée`);
-    } catch {
-      toast.error(`Échec de l'annulation de la commande ${code}`);
+      toast.success('Commande rejetée avec succès.');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Échec du rejet de la commande");
+      throw err;
     }
   };
 
@@ -151,26 +156,30 @@ export function ApprovalQueue() {
                   >
                     <Eye className="h-3.5 w-3.5" />
                   </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleReject(order.id, order.orderCode)}
-                    className="h-8 w-8 p-0 rounded-lg text-rose-600 border-rose-500/30 hover:bg-rose-500/10"
-                    title="Rejeter la commande"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={() => handleApprove(order.id, order.orderCode)}
-                    className="h-8 px-2.5 rounded-lg text-xs font-semibold gap-1 bg-emerald-600 hover:bg-emerald-700 text-white"
-                    title="Valider la commande"
-                  >
-                    <Check className="h-3.5 w-3.5" />
-                    <span>Valider</span>
-                  </Button>
+                  {can('orders.reject') && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setOrderToReject(order)}
+                      className="h-8 w-8 p-0 rounded-lg text-rose-600 border-rose-500/30 hover:bg-rose-500/10"
+                      title="Rejeter la commande"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
+                  {can('orders.validate') && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => handleApprove(order.id, order.orderCode)}
+                      className="h-8 px-2.5 rounded-lg text-xs font-semibold gap-1 bg-emerald-600 hover:bg-emerald-700 text-white"
+                      title="Valider la commande"
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                      <span>Valider</span>
+                    </Button>
+                  )}
                 </div>
               </div>
             ))}
@@ -182,6 +191,24 @@ export function ApprovalQueue() {
           </div>
         )}
       </CardContent>
+
+      <RejectOrderDialog
+        open={!!orderToReject}
+        onOpenChange={(open) => {
+          if (!open) setOrderToReject(null);
+        }}
+        order={
+          orderToReject
+            ? {
+                id: orderToReject.id,
+                orderNumber: orderToReject.orderCode,
+                clientName: orderToReject.client,
+                totalAmount: orderToReject.amount,
+              }
+            : null
+        }
+        onConfirm={(orderId, reason) => handleConfirmReject(orderId, reason)}
+      />
     </Card>
   );
 }

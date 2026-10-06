@@ -268,43 +268,26 @@ export function CreateOrderForm() {
           ? loadedClients.filter((c) => isClientInRegion(c, effectiveRegion))
           : loadedClients;
 
-        // Auto select client: check URL param clientId first, then first available
+        // Auto select client: only if urlClientId is explicitly provided in searchParams
         const targetUrlClient = urlClientId
           ? loadedClients.find((c) => String(c.id) === String(urlClientId))
           : null;
-        const initialClient = targetUrlClient || (filtered.length > 0 ? filtered[0] : (loadedClients.length > 0 ? loadedClients[0] : null));
 
-        if (initialClient) {
-          setSelectedClientId(initialClient.id);
-          const autofilledAddr = initialClient.address?.trim()
-            ? initialClient.address.trim()
-            : initialClient.wilaya
-            ? `${initialClient.wilaya}, Algérie`
+        if (targetUrlClient) {
+          setSelectedClientId(targetUrlClient.id);
+          const autofilledAddr = targetUrlClient.address?.trim()
+            ? targetUrlClient.address.trim()
+            : targetUrlClient.wilaya
+            ? `${targetUrlClient.wilaya}, Algérie`
             : '';
           setDeliveryAddress(autofilledAddr);
 
-          if (!isRegionLocked && initialClient.region && (!effectiveRegion || effectiveRegion === 'all')) {
-            const matchingRegion = validRegions.find((r) => isClientInRegion(initialClient, r.name));
+          if (!isRegionLocked && targetUrlClient.region && (!effectiveRegion || effectiveRegion === 'all')) {
+            const matchingRegion = validRegions.find((r) => isClientInRegion(targetUrlClient, r.name));
             if (matchingRegion) {
               setSelectedRegion(matchingRegion.name);
             }
           }
-        }
-
-        // Initialize 1 default product row
-        if (loadedProducts.length > 0) {
-          const firstProd = loadedProducts[0];
-          setItems([
-            {
-              id: String(Date.now()),
-              productId: firstProd.id,
-              productName: firstProd.name,
-              sku: firstProd.sku || firstProd.code || 'SKU-001',
-              quantity: 10,
-              unitPrice: Number(firstProd.sellingPrice || firstProd.nominalPrice || firstProd.price || 0),
-              discountPercent: Number(firstProd.discountPercent || 0),
-            },
-          ]);
         }
       })
       .catch(() => {
@@ -402,43 +385,28 @@ export function CreateOrderForm() {
       ? clients
       : clients.filter((c) => checkClientBelongsToRegion(c, val));
 
-    if (matches.length > 0) {
-      if (!matches.some((c) => String(c.id) === String(selectedClientId))) {
-        handleSelectClient(matches[0]);
-      }
-    } else {
-      if (clients.length > 0) {
-        handleSelectClient(clients[0]);
-      } else {
-        setSelectedClientId('');
-        setDeliveryAddress('');
-      }
+    if (selectedClientId && !matches.some((c) => String(c.id) === String(selectedClientId))) {
+      setSelectedClientId('');
+      setDeliveryAddress('');
     }
   };
 
   const handleAddRow = () => {
-    const firstProd = products[0];
-    if (!firstProd) return;
-
     setItems((prev) => [
       ...prev,
       {
         id: String(Date.now() + Math.random()),
-        productId: firstProd.id,
-        productName: firstProd.name,
-        sku: firstProd.sku || firstProd.code || 'SKU-001',
+        productId: '',
+        productName: '',
+        sku: '',
         quantity: 1,
-        unitPrice: Number(firstProd.sellingPrice || firstProd.nominalPrice || firstProd.price || 0),
-        discountPercent: Number(firstProd.discountPercent || 0),
+        unitPrice: 0,
+        discountPercent: 0,
       },
     ]);
   };
 
   const handleRemoveRow = (rowId: string) => {
-    if (items.length <= 1) {
-      toast.warning('Une commande doit comporter au moins 1 article.');
-      return;
-    }
     setItems((prev) => prev.filter((item) => item.id !== rowId));
   };
 
@@ -490,32 +458,12 @@ export function CreateOrderForm() {
   const handleResetForm = () => {
     const defaultReg = isRegionLocked ? lockedRegionName : 'all';
     setSelectedRegion(defaultReg);
-    const target = defaultReg.toLowerCase().trim();
-    const matches = defaultReg === 'all'
-      ? clients
-      : clients.filter((c) => (c.region || '').toLowerCase().trim() === target);
-
-    if (matches.length > 0) setSelectedClientId(matches[0].id);
-    else setSelectedClientId('');
-
-    if (products.length > 0) {
-      const firstProd = products[0];
-      setItems([
-        {
-          id: String(Date.now()),
-          productId: firstProd.id,
-          productName: firstProd.name,
-          sku: firstProd.sku || firstProd.code || 'SKU-001',
-          quantity: 10,
-          unitPrice: Number(firstProd.sellingPrice || firstProd.nominalPrice || firstProd.price || 0),
-          discountPercent: Number(firstProd.discountPercent || 0),
-        },
-      ]);
-    }
+    setSelectedClientId('');
     setDeliveryAddress('');
+    setItems([]);
     setNotes('');
     setErrors({});
-    toast.info('Formulaire réinitialisé aux valeurs par défaut.');
+    toast.info('Formulaire réinitialisé.');
   };
 
   const totalAmount = items.reduce((sum, item) => {
@@ -527,7 +475,11 @@ export function CreateOrderForm() {
   const validate = (): boolean => {
     const errs: Record<string, string> = {};
     if (!selectedClientId) errs.client = 'Veuillez sélectionner un client bénéficiaire';
-    if (items.length === 0) errs.items = 'Au moins 1 produit est requis';
+    if (items.length === 0) {
+      errs.items = 'Au moins 1 produit est requis';
+    } else if (items.some((i) => !i.productId)) {
+      errs.items = 'Veuillez sélectionner un produit pour chaque ligne';
+    }
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -549,18 +501,20 @@ export function CreateOrderForm() {
         wilaya: selectedClient?.wilaya || '',
         payment_method: paymentMethod,
         notes,
-        items: items.map((i) => {
-          const netPrice = i.unitPrice * (1 - (i.discountPercent || 0) / 100);
-          return {
-            product_id: i.productId,
-            product_name: i.productName,
-            reference: i.sku,
-            quantity: i.quantity,
-            unit_price: i.unitPrice,
-            discount_percent: i.discountPercent || 0,
-            subtotal: i.quantity * netPrice,
-          };
-        }),
+        items: items
+          .filter((i) => i.productId)
+          .map((i) => {
+            const netPrice = i.unitPrice * (1 - (i.discountPercent || 0) / 100);
+            return {
+              product_id: i.productId,
+              product_name: i.productName,
+              reference: i.sku,
+              quantity: i.quantity,
+              unit_price: i.unitPrice,
+              discount_percent: i.discountPercent || 0,
+              subtotal: i.quantity * netPrice,
+            };
+          }),
       };
 
       const newOrder = await ordersService.create(payload);
@@ -614,7 +568,7 @@ export function CreateOrderForm() {
 
           <Button
             type="submit"
-            disabled={submitting || !selectedClientId}
+            disabled={submitting || !selectedClientId || items.length === 0 || items.some((i) => !i.productId)}
             size="sm"
             className="gap-2 rounded-full h-9 px-5 font-bold text-xs bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary text-primary-foreground shadow-md shadow-primary/20 hover:shadow-lg transition-all duration-200"
           >
@@ -969,82 +923,98 @@ export function CreateOrderForm() {
                     </tr>
                   </thead>
                   <tbody>
-                    {items.map((row) => {
-                      const netUnitPrice = row.unitPrice * (1 - (row.discountPercent || 0) / 100);
-                      const subtotal = row.quantity * netUnitPrice;
+                    {items.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                          <Package className="h-8 w-8 mx-auto mb-2 text-muted-foreground/40" />
+                          <p className="font-semibold text-xs">Aucun article dans cette commande</p>
+                          <p className="text-[11px] text-muted-foreground mt-0.5">
+                            Cliquez sur &laquo; Ajouter une ligne &raquo; pour sélectionner un produit du catalogue.
+                          </p>
+                        </td>
+                      </tr>
+                    ) : (
+                      items.map((row) => {
+                        const netUnitPrice = row.unitPrice * (1 - (row.discountPercent || 0) / 100);
+                        const subtotal = row.quantity * netUnitPrice;
 
-                      return (
-                        <tr key={row.id} className="border-t border-border/30 hover:bg-muted/30 transition-colors">
-                          <td className="px-4 py-3">
-                            <Select
-                              value={row.productId}
-                              onValueChange={(val) => val && handleProductChange(row.id, val)}
-                            >
-                              <SelectTrigger className="w-full h-11 text-xs font-semibold text-foreground bg-background rounded-xl border-border/70 focus:ring-primary/20">
-                                <SelectValue placeholder="Choisir un produit...">
-                                  <div className="flex items-center gap-2 text-left truncate">
-                                    <span className="font-bold text-foreground truncate">{row.productName}</span>
-                                    {row.sku && (
-                                      <Badge variant="outline" className="text-[10px] font-mono px-1.5 py-0 bg-muted/60 border-border/60 shrink-0">
-                                        {row.sku}
-                                      </Badge>
-                                    )}
-                                  </div>
-                                </SelectValue>
-                              </SelectTrigger>
-                              <SelectContent className="rounded-xl border-border/60 p-1 max-h-64 z-[120]">
-                                {products.map((p) => {
-                                  const basePrice = Number(p.sellingPrice || p.nominalPrice || p.price || 0);
-                                  return (
-                                    <SelectItem key={p.id} value={p.id} className="text-xs font-medium py-2.5 cursor-pointer">
-                                      <div className="flex items-center justify-between gap-3 w-full">
-                                        <div>
-                                          <div className="font-bold text-foreground text-xs">{p.name}</div>
-                                          <div className="text-[10px] text-muted-foreground font-mono">
-                                            SKU: {p.sku || p.code || 'N/A'} {p.category ? `• ${p.category}` : ''}
+                        return (
+                          <tr key={row.id} className="border-t border-border/30 hover:bg-muted/30 transition-colors">
+                            <td className="px-4 py-3">
+                              <Select
+                                value={row.productId}
+                                onValueChange={(val) => val && handleProductChange(row.id, val)}
+                              >
+                                <SelectTrigger className="w-full h-11 text-xs font-semibold text-foreground bg-background rounded-xl border-border/70 focus:ring-primary/20">
+                                  <SelectValue placeholder="Choisir un produit...">
+                                    {row.productName ? (
+                                      <div className="flex items-center gap-2 text-left truncate">
+                                        <span className="font-bold text-foreground truncate">{row.productName}</span>
+                                        {row.sku && (
+                                          <Badge variant="outline" className="text-[10px] font-mono px-1.5 py-0 bg-muted/60 border-border/60 shrink-0">
+                                            {row.sku}
+                                          </Badge>
+                                        )}
+                                      </div>
+                                    ) : null}
+                                  </SelectValue>
+                                </SelectTrigger>
+                                <SelectContent className="rounded-xl border-border/60 p-1 max-h-64 z-[120]">
+                                  {products.map((p) => {
+                                    const basePrice = Number(p.sellingPrice || p.nominalPrice || p.price || 0);
+                                    return (
+                                      <SelectItem key={p.id} value={p.id} className="text-xs font-medium py-2.5 cursor-pointer">
+                                        <div className="flex items-center justify-between gap-3 w-full">
+                                          <div>
+                                            <div className="font-bold text-foreground text-xs">{p.name}</div>
+                                            <div className="text-[10px] text-muted-foreground font-mono">
+                                              SKU: {p.sku || p.code || 'N/A'} {p.category ? `• ${p.category}` : ''}
+                                            </div>
+                                          </div>
+                                          <div className="text-right shrink-0">
+                                            <span className="text-primary font-bold">{formatCurrency(basePrice)}</span>
+                                            {p.discountPercent ? (
+                                              <span className="block text-[10px] text-emerald-600 font-semibold">
+                                                -{p.discountPercent}% suggéré
+                                              </span>
+                                            ) : null}
                                           </div>
                                         </div>
-                                        <div className="text-right shrink-0">
-                                          <span className="text-primary font-bold">{formatCurrency(basePrice)}</span>
-                                          {p.discountPercent ? (
-                                            <span className="block text-[10px] text-emerald-600 font-semibold">
-                                              -{p.discountPercent}% suggéré
-                                            </span>
-                                          ) : null}
-                                        </div>
-                                      </div>
-                                    </SelectItem>
-                                  );
-                                })}
-                              </SelectContent>
-                            </Select>
-                          </td>
+                                      </SelectItem>
+                                    );
+                                  })}
+                                </SelectContent>
+                              </Select>
+                            </td>
 
-                          <td className="px-3 py-3 text-center">
-                            <Input
-                              type="number"
-                              min="1"
-                              value={row.quantity}
-                              onChange={(e) => handleQuantityChange(row.id, Number(e.target.value))}
-                              className="h-10 text-xs text-center font-bold rounded-xl border-border/70 bg-background focus:border-primary"
-                            />
-                          </td>
+                            <td className="px-3 py-3 text-center">
+                              <Input
+                                type="number"
+                                min="1"
+                                value={row.quantity}
+                                onChange={(e) => handleQuantityChange(row.id, Number(e.target.value))}
+                                className="h-10 text-xs text-center font-bold rounded-xl border-border/70 bg-background focus:border-primary"
+                              />
+                            </td>
 
-                          <td className="px-3 py-3 text-right">
-                            <Input
-                              type="number"
-                              min="0"
-                              step="10"
-                              value={row.unitPrice}
-                              onChange={(e) => handleUnitPriceChange(row.id, Number(e.target.value))}
-                              className="h-10 text-xs text-right font-semibold rounded-xl border-border/70 bg-background focus:border-primary"
-                            />
-                            {row.discountPercent > 0 && (
-                              <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold mt-1 text-right">
-                                Net: {formatCurrency(netUnitPrice)}
-                              </div>
-                            )}
-                          </td>
+                            <td className="px-3 py-3 text-right">
+                              <Input
+                                type="number"
+                                min="0"
+                                step="10"
+                                value={row.unitPrice}
+                                disabled
+                                readOnly
+                                tabIndex={-1}
+                                aria-readonly="true"
+                                className="h-10 text-xs text-right font-semibold rounded-xl border-border/70 bg-muted/60 text-muted-foreground cursor-not-allowed select-none focus:ring-0 focus-visible:ring-0 disabled:opacity-80"
+                              />
+                              {row.discountPercent > 0 && (
+                                <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold mt-1 text-right">
+                                  Net: {formatCurrency(netUnitPrice)}
+                                </div>
+                              )}
+                            </td>
 
                           {/* Price Reducer / Discount % */}
                           <td className="px-3 py-3 text-center">
@@ -1115,7 +1085,7 @@ export function CreateOrderForm() {
                           </td>
                         </tr>
                       );
-                    })}
+                    }))}
                   </tbody>
                   <tfoot className="bg-muted/40 border-t border-border/40">
                     <tr>
@@ -1133,6 +1103,12 @@ export function CreateOrderForm() {
                   </tfoot>
                 </table>
               </div>
+
+              {errors.items && (
+                <p className="text-[11px] font-medium text-rose-500 flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3" /> {errors.items}
+                </p>
+              )}
             </CardContent>
           </Card>
 
@@ -1283,7 +1259,7 @@ export function CreateOrderForm() {
               <Button
                 type="submit"
                 size="sm"
-                disabled={submitting || !selectedClientId}
+                disabled={submitting || !selectedClientId || items.length === 0 || items.some((i) => !i.productId)}
                 className="gap-2 rounded-xl h-8 px-4 font-bold text-xs bg-primary text-primary-foreground hover:bg-primary/90"
               >
                 {submitting ? <Loader2 className="h-3 w-3 animate-spin text-primary-foreground" /> : <Check className="h-3.5 w-3.5 text-primary-foreground" />}

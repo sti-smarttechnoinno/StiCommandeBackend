@@ -649,10 +649,31 @@ class OrderController extends Controller
     public function update(Request $request, $id)
     {
         $user = $request->user();
-        if ($user && !$user->hasPermission('orders.update')) {
-            return response()->json([
-                'message' => "Accès non autorisé : votre rôle [{$user->role}] ne peut pas modifier ou valider les commandes."
-            ], 403);
+        $newStatus = $request->input('status');
+        $hasValidatedItems = $request->has('validated_items') && is_array($request->input('validated_items'));
+        $hasRejectionReason = $request->filled('rejection_reason');
+
+        $isValidation = in_array($newStatus, ['validated', 'partially_validated']) || $hasValidatedItems;
+        $isRejection = $newStatus === 'rejected' || $hasRejectionReason;
+
+        if ($user) {
+            if ($isValidation && !$user->hasPermission('orders.validate')) {
+                return response()->json([
+                    'message' => "Accès non autorisé : votre rôle [{$user->role}] ne dispose pas de la permission de valider les commandes (orders.validate)."
+                ], 403);
+            }
+
+            if ($isRejection && !$user->hasPermission('orders.reject')) {
+                return response()->json([
+                    'message' => "Accès non autorisé : votre rôle [{$user->role}] ne dispose pas de la permission de rejeter les commandes (orders.reject)."
+                ], 403);
+            }
+
+            if (!$isValidation && !$isRejection && !$user->hasPermission('orders.update')) {
+                return response()->json([
+                    'message' => "Accès non autorisé : votre rôle [{$user->role}] ne dispose pas de la permission de modifier les commandes (orders.update)."
+                ], 403);
+            }
         }
 
         $order = Order::with('items')->find($id);
