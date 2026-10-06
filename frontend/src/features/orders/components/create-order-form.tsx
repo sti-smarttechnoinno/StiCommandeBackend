@@ -493,10 +493,16 @@ export function CreateOrderForm() {
 
     setSubmitting(true);
     try {
+      // If user is a commercial/delegate, use their user name as the order's delegate
+      const effectiveDelegateName = (isCommercial || isRestrictedByRegion) && user?.name
+        ? user.name
+        : (selectedClient?.delegateName || user?.name || 'Délégué Commercial');
+
       const payload = {
         client_id: selectedClientId,
         client_name: selectedClient?.name || '',
-        delegate_name: selectedClient?.delegateName || 'Délégué Commercial',
+        delegate_id: (isCommercial || isRestrictedByRegion) && user?.id ? String(user.id) : undefined,
+        delegate_name: effectiveDelegateName,
         region: selectedClient?.region || 'Algiers',
         wilaya: selectedClient?.wilaya || '',
         payment_method: paymentMethod,

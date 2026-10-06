@@ -591,7 +591,7 @@ export function OrderExpandedRow({ order, onUpdateStatus, onRejectOrder }: Order
             </CardContent>
           </Card>
 
-          <div className="space-y-2">
+          <div className="flex flex-col gap-2">
             <Button
               type="button"
               variant="outline"

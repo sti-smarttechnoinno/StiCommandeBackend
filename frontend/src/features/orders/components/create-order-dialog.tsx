@@ -55,7 +55,7 @@ interface OrderItemRow {
 }
 
 export function CreateOrderDialog({ open, onOpenChange, onOrderCreated }: CreateOrderDialogProps) {
-  const { isCommercial, isRestrictedByRegion, region: userRegion } = usePermissions();
+  const { user, isCommercial, isRestrictedByRegion, region: userRegion } = usePermissions();
   const [clients, setClients] = useState<ClientData[]>([]);
   const [products, setProducts] = useState<ProductData[]>([]);
   const [loadingData, setLoadingData] = useState(false);
@@ -189,10 +189,15 @@ export function CreateOrderDialog({ open, onOpenChange, onOrderCreated }: Create
 
     setSubmitting(true);
     try {
+      const effectiveDelegateName = (isCommercial || isRestrictedByRegion) && user?.name
+        ? user.name
+        : (selectedClient?.delegateName || user?.name || 'Délégué Commercial');
+
       const payload = {
         client_id: selectedClientId,
         client_name: selectedClient?.name || '',
-        delegate_name: selectedClient?.delegateName || 'Délégué Commercial',
+        delegate_id: (isCommercial || isRestrictedByRegion) && user?.id ? String(user.id) : undefined,
+        delegate_name: effectiveDelegateName,
         region: selectedClient?.region || 'Algiers',
         wilaya: selectedClient?.wilaya || '',
         payment_method: paymentMethod,

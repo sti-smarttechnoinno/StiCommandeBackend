@@ -103,7 +103,7 @@ export function Sidebar() {
 
       <aside
         className={cn(
-          'fixed left-0 top-0 z-50 h-screen bg-white border-r border-border flex flex-col transition-all duration-300',
+          'fixed left-0 top-0 z-50 h-screen bg-card text-card-foreground border-r border-border flex flex-col transition-all duration-300',
           collapsed ? 'w-[72px]' : 'w-[280px]',
           isMobile
             ? sidebarMobileOpen
@@ -199,7 +199,7 @@ export function Sidebar() {
                         )}
                         <Icon className={cn('h-5 w-5', isChildActive ? 'text-primary' : 'opacity-70 group-hover:opacity-100')} />
                         {sectionBadge && sectionBadge > 0 && (
-                          <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse border-2 border-white" />
+                          <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse border-2 border-card" />
                         )}
                       </div>
                     </DropdownMenuTrigger>
@@ -207,7 +207,7 @@ export function Sidebar() {
                       side="right"
                       align="start"
                       sideOffset={14}
-                      className="w-56 p-2 shadow-xl bg-white dark:bg-card border border-border rounded-2xl z-50 animate-in fade-in-0 zoom-in-95"
+                      className="w-56 p-2 shadow-xl bg-popover text-popover-foreground border border-border rounded-2xl z-50 animate-in fade-in-0 zoom-in-95"
                     >
                       <div className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center justify-between">
                         <span>{item.label}</span>

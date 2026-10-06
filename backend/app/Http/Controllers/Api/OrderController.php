@@ -432,33 +432,44 @@ class OrderController extends Controller
             ], 403);
         }
 
-        // Resolve client & delegate details
-        $clientName = $request->input('client_name');
-        $wilaya = $request->input('wilaya');
-        $region = $request->input('region', 'Algiers');
-        
-        $delegateName = $request->input('delegate_name') 
-            ?? ($user ? $user->name : null);
+        // Resolve creator and delegate details
+        $userRole = strtolower($user?->role ?? '');
+        $isUserCommercialOrDelegate = in_array($userRole, ['commercial', 'delegate', 'delegue']) || ($user && $user->isRestrictedByRegion());
 
-        // If commercial is restricted by region, enforce territorial scope
-        if ($user && $user->isRestrictedByRegion() && !empty($user->region)) {
-            $region = $user->region;
-            $delegateName = $user->name;
-        }
-
+        // Default delegate name from request or client
+        $client = null;
         if ($clientId = $request->input('client_id')) {
             $client = Client::with('delegate')->find($clientId);
             if ($client) {
                 $clientName = $client->name;
                 $wilaya = $client->wilaya ?? $wilaya;
                 $region = $client->region ?? $region;
-                if (!$delegateName || strtolower($delegateName) === 'unassigned') {
-                    $delegateName = $client->delegate?->name ?? $client->delegate_name;
-                }
             }
         }
 
-        if (!$delegateName || strtolower($delegateName) === 'unassigned') {
+        // When a delegate or commercial creates the order, always assign them as the order creator / delegate
+        if ($isUserCommercialOrDelegate && $user) {
+            $delegateName = $user->name;
+            $delegateId = (string) $user->id;
+            if (!empty($user->region)) {
+                $region = $user->region;
+            }
+        } else {
+            // For admins/other roles, prioritize explicitly chosen delegate, then client's assigned delegate, then creator name
+            $delegateName = $request->input('delegate_name');
+            $delegateId = $request->input('delegate_id');
+
+            if (!$delegateName || strtolower($delegateName) === 'unassigned' || $delegateName === 'Délégué Commercial') {
+                $delegateName = $client?->delegate?->name ?? $client?->delegate_name ?? ($user ? $user->name : 'Délégué Commercial');
+            }
+            if (!$delegateId && !empty($client) && $client->delegate_id) {
+                $delegateId = (string) $client->delegate_id;
+            } elseif (!$delegateId && $user) {
+                $delegateId = (string) $user->id;
+            }
+        }
+
+        if (empty($delegateName) || strtolower($delegateName) === 'unassigned') {
             $delegateName = 'Délégué Commercial';
         }
 
@@ -538,9 +549,11 @@ class OrderController extends Controller
                 ];
             }
 
-            $delegateId = $request->input('delegate_id') ?? ($user ? (string) $user->id : null);
-            if (!$delegateId && !empty($client) && $client->delegate_id) {
-                $delegateId = (string) $client->delegate_id;
+            if (!$delegateId) {
+                $delegateId = $request->input('delegate_id') ?? ($user ? (string) $user->id : null);
+                if (!$delegateId && !empty($client) && $client->delegate_id) {
+                    $delegateId = (string) $client->delegate_id;
+                }
             }
 
             $order = Order::create([
